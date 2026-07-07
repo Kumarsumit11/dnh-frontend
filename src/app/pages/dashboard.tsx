@@ -2126,7 +2126,7 @@ function Services() {
 // ─── Why DNH — Diagrammatic ───────────────────────────────────────────────────
 
 const WHY_ITEMS = [
-  { icon: <Network size={28} />, stat: "4000+", label: "Investors", title: "Deep Network", desc: "Direct access to PE, VC, banks, family offices." },
+  { icon: <Network size={28} />, stat: "4000+", label: "Investors", title: "Deep Network", desc: "Direct access to PE, VC, family offices." },
   { icon: <Clock size={28} />, stat: "6 Weeks", label: "Avg close", title: "Speed to Close", desc: "Fastest placement in our category." },
   { icon: <Award size={28} />, stat: "$2.5B+", label: "Deployed", title: "Proven Results", desc: "150+ closed transactions across 25 countries." },
   { icon: <Lock size={28} />, stat: "100%", label: "Confidential", title: "Full Discretion", desc: "Signed NDAs. Your mandate is never shopped." },
@@ -3606,7 +3606,7 @@ function Footer() {
           fontFamily: "Inter, sans-serif",
         }}
       >
-        Access our network of investors, banks, NBFCs, family offices and
+        Access our network of investors, family offices and
         strategic funding partners.
       </p>
 
