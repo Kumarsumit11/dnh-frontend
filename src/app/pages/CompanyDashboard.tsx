@@ -1117,23 +1117,62 @@ function AppInner() {
 
       const dashboard = await getCompanyDashboard();
 
-      console.log(dashboard);
-
       setDashboardData(dashboard);
       setProfileData(dashboard.profile);
 
       setKpi({
-        fundingRequired: dashboard.dashboard.fundingRequired,
-        fundingRaised: dashboard.dashboard.fundingRaised,
-        activeInvestors: dashboard.dashboard.activeInvestors,
-        verificationStatus: dashboard.dashboard.verificationStatus,
-        unreadNotifications: dashboard.dashboard.unreadNotifications,
+        fundingRequired: dashboard.dashboard?.fundingRequired ?? null,
+        fundingRaised: dashboard.dashboard?.fundingRaised ?? null,
+        activeInvestors: dashboard.dashboard?.activeInvestors ?? null,
+        verificationStatus: dashboard.dashboard?.verificationStatus ?? null,
+        unreadNotifications: dashboard.dashboard?.unreadNotifications ?? null,
       });
 
-      // Step 15: populate other dashboard data (if backend returns these fields)
-      if (dashboard.proposals) setProposals(dashboard.proposals);
-      if (dashboard.notifications) setNotifications(dashboard.notifications);
-      if (dashboard.documents) setDocuments(dashboard.documents);
+      // Map raw API records into the shapes the UI components expect.
+      if (dashboard.proposals) {
+        setProposals(
+          dashboard.proposals.map((p: any) => ({
+            id: p.id,
+            investor: p.investor?.fullName || p.investor?.account?.email || "Unknown investor",
+            type: p.sharesRequested ? "Share Purchase" : "Investment",
+            amount: `₹${Number(p.proposedAmount).toLocaleString("en-IN")}`,
+            instrument: p.sharesRequested
+              ? `${p.sharesRequested} shares`
+              : p.fundingOpportunity?.equityOfferedPct
+              ? `${p.fundingOpportunity.equityOfferedPct}% Equity`
+              : "Direct Investment",
+            status: p.status,
+            submitted: new Date(p.createdAt).toLocaleDateString("en-IN"),
+            valuation: p.fundingOpportunity?.valuation ? `₹${Number(p.fundingOpportunity.valuation).toLocaleString("en-IN")}` : "-",
+            ownership: p.fundingOpportunity?.equityOfferedPct ? `${p.fundingOpportunity.equityOfferedPct}%` : "-",
+          }))
+        );
+      }
+
+      if (dashboard.notifications) {
+        setNotifications(
+          dashboard.notifications.map((n: any) => ({
+            id: n.id,
+            type: (n.type || "system").toLowerCase(),
+            message: n.message,
+            time: new Date(n.createdAt).toLocaleString("en-IN"),
+            read: n.isRead,
+          }))
+        );
+      }
+
+      if (dashboard.documents) {
+        setDocuments(
+          dashboard.documents.map((d: any) => ({
+            name: d.fileName,
+            type: d.type,
+            size: d.sizeBytes ? `${(d.sizeBytes / 1024).toFixed(0)} KB` : "-",
+            status: (d.status || "pending").toLowerCase(),
+            uploaded: new Date(d.createdAt).toLocaleDateString("en-IN"),
+            views: 0,
+          }))
+        );
+      }
       if (dashboard.fundingChart) setFundingChart(dashboard.fundingChart);
       if (dashboard.engagementChart) setEngagementChart(dashboard.engagementChart);
       if (dashboard.activityFeed) setActivityFeed(dashboard.activityFeed);

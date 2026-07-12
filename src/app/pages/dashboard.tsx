@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import {
   ArrowRight, Menu, X, TrendingUp, Shield, Globe, Users, BarChart2,
-  Briefcase, ChevronRight, Linkedin, Twitter, Mail, Phone, MapPin,
+  Briefcase, ChevronRight,  Phone, MapPin,
   CheckCircle, Zap, Award, Lock, Target, Building2, Cpu, HeartPulse,
   Truck, ShoppingBag, Factory, Leaf, Home, GraduationCap, Cookie,
   Network, Clock, Star, ArrowUpRight,
 } from "lucide-react";
+import { Linkedin, Mail, MessageCircle } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
@@ -3730,24 +3731,84 @@ function Footer() {
           </p>
 
           <div style={{ display: "flex", gap: 12 }}>
-            {[Linkedin, Twitter].map((Icon, i) => (
-              <a
-                key={i}
-                href="#"
-                style={{
-                  width: 38,
-                  height: 38,
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#fff",
-                }}
-              >
-                <Icon size={16} />
-              </a>
-            ))}
-          </div>
+  <a
+  href="https://www.linkedin.com/company/dnh-fintech/"
+  target="_blank"
+  rel="noopener noreferrer"
+  onMouseEnter={(e) => {
+    e.currentTarget.style.background = "#2563EB";
+    e.currentTarget.style.borderColor = "#2563EB";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.background = "transparent";
+    e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+  }}
+  style={{
+    width: 38,
+    height: 38,
+    border: "1px solid rgba(255,255,255,0.1)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    transition: "all 0.3s ease",
+  }}
+>
+  <Linkedin size={16} />
+</a>
+
+<a
+  href="https://wa.me/9344885612"
+  target="_blank"
+  rel="noopener noreferrer"
+  onMouseEnter={(e) => {
+    e.currentTarget.style.background = "#2563EB";
+    e.currentTarget.style.borderColor = "#2563EB";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.background = "transparent";
+    e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+  }}
+  style={{
+    width: 38,
+    height: 38,
+    border: "1px solid rgba(255,255,255,0.1)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    transition: "all 0.3s ease",
+  }}
+>
+  <MessageCircle size={16} />
+</a>
+
+  <a
+  href="mailto:info@dnhfintech.com"
+  onMouseEnter={(e) => {
+    e.currentTarget.style.background = "#2563EB";
+    e.currentTarget.style.borderColor = "#2563EB";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.background = "transparent";
+    e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+  }}
+  style={{
+    width: 38,
+    height: 38,
+    border: "1px solid rgba(255,255,255,0.1)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    transition: "all 0.3s ease",
+  }}
+>
+  <Mail size={16} />
+</a>
+
+
+</div>
         </div>
 
         {/* Company */}
@@ -3889,7 +3950,7 @@ function Footer() {
             fontFamily: "Inter, sans-serif",
           }}
         >
-          © 2025 DNH Fintech Pvt. Ltd. All rights reserved.
+          © 2010 DNH Fintech Pvt. Ltd. All rights reserved.
         </p>
 
         <div

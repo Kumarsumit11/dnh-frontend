@@ -303,7 +303,7 @@ export default function GetStarted() {
     toast.success("OTP sent to your email");
 
     // Go to OTP screen
-    setSignupStep(2);
+    setSignupStep(3);
 
   } catch (error: any) {
     toast.error(
@@ -911,11 +911,11 @@ const handleNavClick = (id: string) => {
       </p>
 
       <button
-        onClick={() => setSignupStep(3)}
+        onClick={() => setSignupStep(2)}
         className={primaryBtn}
         style={{ background: "linear-gradient(135deg,  #1d4ed8  0%, #1d4ed8 100%)" }}
       >
-        Send Verification Code →
+        Continue →
       </button>
 
       <div className="flex items-center gap-3">
@@ -936,7 +936,7 @@ const handleNavClick = (id: string) => {
   const signupStep2Form = (
     <div className="space-y-4">
       <button
-        onClick={() => setSignupStep(1)}
+        onClick={() => setSignupStep(2)}
         className="flex items-center gap-1.5 text-xs transition-colors"
         style={{ color: t.textMuted }}
       >
@@ -997,7 +997,7 @@ const handleNavClick = (id: string) => {
   const signupStep3Form = (
     <div className="space-y-4">
       <button
-        onClick={() => setSignupStep(2)}
+        onClick={() => setSignupStep(1)}
         className="flex items-center gap-1.5 text-xs transition-colors"
         style={{ color: t.textMuted }}
       >
@@ -1135,8 +1135,8 @@ const handleNavClick = (id: string) => {
       <div className="transition-all duration-200">
         {authMode === "login" && loginForm}
         {authMode === "signup" && signupStep === 1 && signupStep1Form}
-        {authMode === "signup" && signupStep === 2 && signupStep2Form}
-        {authMode === "signup" && signupStep === 3 && signupStep3Form}
+        {authMode === "signup" && signupStep === 2 && signupStep3Form}
+        {authMode === "signup" && signupStep === 3 && signupStep2Form}
       </div>
     </div>
   );
