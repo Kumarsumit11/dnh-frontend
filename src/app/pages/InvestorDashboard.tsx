@@ -1063,7 +1063,7 @@ export default function App() {
         <div className={`flex items-center h-14 px-4 border-b border-sidebar-border flex-shrink-0 ${sidebarOpen ? "gap-3" : "justify-center"}`}>
           <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 bg-primary">
   <img
-    src="/logo.jpeg"
+    src="/logo.png"
     alt="DnH FINTECH"
     className="w-full h-full object-cover"
   />

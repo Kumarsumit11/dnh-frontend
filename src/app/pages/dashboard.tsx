@@ -217,30 +217,43 @@ const GLOBAL_CSS = `
   text-align: center;
 }
 
-.loading-logo {
-  width: 240px;
-  height: auto;
+.loading-logo{
+    width:220px;
+    height:auto;
 
-  opacity: 0;
-  transform: scale(0.7);
+    opacity:0;
 
-  animation: logoReveal 1s ease forwards;
-  animation-delay: 0.3s;
+    transform:scale(.75);
+
+    filter:
+        drop-shadow(0 0 20px rgba(0,174,239,.35))
+        drop-shadow(0 0 40px rgba(0,214,111,.25));
+
+    animation:
+        logoReveal 1s ease forwards,
+        logoGlow 2.5s ease-in-out infinite;
+
+    animation-delay:
+        .3s,
+        1.3s;
 }
 
-.loading-title {
-  margin-top: 24px;
+.loading-subtitle{
+    margin-top:28px;
 
-  font-family: 'Playfair Display', serif;
-  font-size: 42px;
-  font-weight: 700;
+    color:rgba(255,255,255,.78);
 
-  color: white;
+    font-size:16px;
 
-  opacity: 0;
+    letter-spacing:1.5px;
 
-  animation: textReveal 0.8s ease forwards;
-  animation-delay: 0.8s;
+    font-weight:500;
+
+    opacity:0;
+
+    animation:textReveal .8s ease forwards;
+
+    animation-delay:.9s;
 }
 
 .loading-bar {
@@ -320,6 +333,27 @@ const GLOBAL_CSS = `
   }
 }
 
+@keyframes logoGlow{
+
+    0%{
+        filter:
+        drop-shadow(0 0 18px rgba(0,174,239,.25))
+        drop-shadow(0 0 35px rgba(0,214,111,.18));
+    }
+
+    50%{
+        filter:
+        drop-shadow(0 0 35px rgba(0,174,239,.6))
+        drop-shadow(0 0 60px rgba(0,214,111,.45));
+    }
+
+    100%{
+        filter:
+        drop-shadow(0 0 18px rgba(0,174,239,.25))
+        drop-shadow(0 0 35px rgba(0,214,111,.18));
+    }
+}
+
   @media (max-width: 900px) {
     .hidden-mobile { display: none !important; }
     .show-mobile { display: flex !important; }
@@ -332,19 +366,21 @@ function LoadingScreen() {
   return (
     <div className="loading-screen">
       <div className="loading-content">
+
         <img
-          src="/logo.jpeg"
+          src="/logo.png"
           alt="DNH Fintech"
           className="loading-logo"
         />
 
-        <h1 className="loading-title">
-          DnH Fintech
-        </h1>
+        <p className="loading-subtitle">
+          Initializing Platform...
+        </p>
 
         <div className="loading-bar">
-          <div className="loading-bar-fill" />
+          <div className="loading-bar-fill"></div>
         </div>
+
       </div>
     </div>
   );
@@ -764,7 +800,7 @@ function Navbar({
     }}
   >
     <img
-      src="/logo.jpeg"
+      src="/logo.png"
       alt="DNH Fintech"
       style={{
         height: 52,

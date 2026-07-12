@@ -109,7 +109,7 @@ function Logo({ t }: { t: typeof THEME.light }) {
   return (
     <div className="flex items-center gap-3">
       <img
-        src="/logo.jpeg"
+        src="/logo.png"
         alt="DNH Capital"
         className="h-10 w-auto object-contain"
       />
@@ -795,9 +795,12 @@ const handleNavClick = (id: string) => {
           </div>
           <span className="text-xs" style={{ color: t.textSecondary }}>Remember me</span>
         </label>
-        <button className="text-xs text-[#1D8CF8] font-semibold hover:underline">
-          Forgot password?
-        </button>
+        <button
+  onClick={() => navigate("/forgot-password")}
+  className="text-xs text-[#1D8CF8] font-semibold hover:underline"
+>
+  Forgot password?
+</button>
       </div>
 
       <button

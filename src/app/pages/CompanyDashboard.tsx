@@ -283,7 +283,7 @@ async function handleFile(key: string, file: File) {
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-3">
            <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.surfaceUp }}>
-  <img src="/logo.jpeg" alt="DNH Capital" className="w-full h-full object-cover" />
+  <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
 </div>
             <div>
               <div className="text-sm font-semibold" style={{ color: C.textPrimary }}>DNH Capital</div>
@@ -456,7 +456,7 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5">
         <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.surfaceUp, boxShadow: `0 4px 12px rgba(0,201,167,0.3)` }}>
-  <img src="/logo.jpeg" alt="DNH Capital" className="w-full h-full object-cover" />
+  <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
 </div>
         <div>
           <div className="text-[12px] font-semibold" style={{ color: C.textPrimary }}>DNH Capital</div>

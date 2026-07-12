@@ -9,6 +9,10 @@ import InvestorDashboard from "./pages/InvestorDashboard";
 import CompanyDashboard from "./pages/CompanyDashboard";
 import AssociateDashboard from "./pages/AssociateDashboard";
 
+
+import ResetPassword from "./pages/ResetPassword";
+
+
 function App() {
   return (
     <Routes>
@@ -16,6 +20,7 @@ function App() {
       <Route path="/get-started" element={<GetStarted />} />
       <Route path="/investor/dashboard" element={<InvestorDashboard />} />
       <Route path="/company/dashboard" element={<CompanyDashboard />} />
+      
       <Route path="/Associate/dashboard" element={<AssociateDashboard />} />
     </Routes>
   );
