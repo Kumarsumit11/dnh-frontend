@@ -3305,7 +3305,7 @@ function Contact() {
               {
                 icon: <Phone size={16} color="#005F6B" />,
                 label: "Phone",
-                val: "+91 11 4123 4567",
+                val: "+91 93448 85612",
               },
             ].map((r) => (
               <div
@@ -3913,7 +3913,7 @@ function Footer() {
               fontFamily: "Inter, sans-serif",
             }}
           >
-            +91 7042997771
+            +91 9344885612
           </p>
 
           <p

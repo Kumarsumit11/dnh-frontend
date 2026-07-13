@@ -3,16 +3,22 @@ import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { uploadDocument } from "../../api/document";
-import { getMyDocuments } from "../../api/document";
+import { uploadDocument, getMyDocuments } from "../../api/document";
 import { getCompanyDashboard } from "../../api/dashboard";
-import { getCompanyProfile } from "../../api/profile";
+import { getCompanyProfile, updateCompanyProfile } from "../../api/profile";
+import { createFundingOpportunity } from "../../api/funding";
+import {
+  getCompanyUpdates, createCompanyUpdate, editCompanyUpdate, deleteCompanyUpdate,
+  type CompanyUpdate, type UpdateAuthorRole, type UpdateCategory,
+} from "../../api/company-update";
 import {
   LayoutDashboard, TrendingUp, Users, FileText, ShieldCheck,
   Bell, User, Settings, ChevronRight, ArrowUpRight, ArrowDownRight,
   Briefcase, DollarSign, Activity, Eye, Download, Search,
   MoreHorizontal, Upload, CheckCircle, Clock, AlertCircle,
   Target, Shield, X, Lock, Zap, Mail, Sparkles, Sun, Moon,
+  MessageSquare, Pencil, Trash2, Loader2, Send, Megaphone,
+  BarChart2, Rocket, AlertTriangle,
 } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -105,9 +111,20 @@ interface AppUser { name: string; email: string; company: string; role: string; 
 interface UploadedDoc { name: string; size: string; type: string; status: "uploaded" | "processing" | "verified"; uploadedAt: string; }
 interface KpiData { fundingRequired: string | null; fundingRaised: string | null; activeInvestors: number | null; verificationStatus: string | null; unreadNotifications: number | null; }
 interface Proposal { id: string; investor: string; type: string; amount: string; instrument: string; status: string; submitted: string; valuation: string; ownership: string; }
-interface Document { name: string; type: string; size: string; status: string; uploaded: string; views: number; }
+interface DocumentRow { name: string; type: string; size: string; status: string; uploaded: string; views: number; }
 interface Notification { id: string; type: string; message: string; time: string; read: boolean; }
 interface ActivityItem { investor: string; action: string; time: string; }
+
+interface CompanyDetails {
+  ceoName: string;
+  cfoName: string;
+  gstin: string;
+  monthlyRevenue: string;
+  yearlyRevenue: string;
+  registrationNumber: string;
+  industry: string;
+  website: string;
+}
 
 const REQUIRED_DOCS = [
   { key: "pitch_deck",         label: "Pitch Deck",                 description: "Company presentation and investment thesis",    accept: ".pdf,.pptx", icon: Sparkles },
@@ -120,11 +137,20 @@ const REQUIRED_DOCS = [
 const NAV_GROUPS = [
   { label: "Overview",    items: [{ id: "dashboard", label: "Dashboard", icon: LayoutDashboard }] },
   { label: "Capital",     items: [{ id: "funding", label: "Funding", icon: TrendingUp }, { id: "proposals", label: "Investor Proposals", icon: Briefcase }, { id: "investments", label: "Investments", icon: DollarSign }] },
+  { label: "Leadership",  items: [{ id: "updates", label: "CEO / CFO Updates", icon: MessageSquare }] },
   { label: "Compliance",  items: [{ id: "documents", label: "Documents", icon: FileText }, { id: "verification", label: "Verification", icon: ShieldCheck }] },
   { label: "Account",     items: [{ id: "notifications", label: "Notifications", icon: Bell }, { id: "profile", label: "Profile", icon: User }, { id: "settings", label: "Settings", icon: Settings }] },
 ];
 
 const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items);
+
+const UPDATE_CATEGORIES: { value: UpdateCategory; label: string; icon: React.ElementType }[] = [
+  { value: "GENERAL",   label: "General",   icon: Megaphone },
+  { value: "FINANCIAL", label: "Financial", icon: BarChart2 },
+  { value: "PRODUCT",   label: "Product",   icon: Rocket },
+  { value: "MILESTONE", label: "Milestone", icon: Target },
+  { value: "RISK",      label: "Risk",      icon: AlertTriangle },
+];
 
 // ─── Utility components ───────────────────────────────────────────────────────
 function Panel({ children, className = "", glow = false }: { children: React.ReactNode; className?: string; glow?: boolean }) {
@@ -181,6 +207,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function RoleBadge({ role }: { role: UpdateAuthorRole }) {
+  const { colors: C } = useTheme();
+  const isCEO = role === "CEO";
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest"
+      style={{ color: isCEO ? C.teal : C.indigo, background: isCEO ? C.tealDim : `${C.indigo}18` }}
+    >
+      {role}
+    </span>
+  );
+}
+
+function CategoryBadge({ category }: { category: UpdateCategory }) {
+  const { colors: C } = useTheme();
+  const meta = UPDATE_CATEGORIES.find((c) => c.value === category) ?? UPDATE_CATEGORIES[0];
+  return (
+    <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider px-2 py-1 rounded-md" style={{ background: C.surfaceUp, color: C.textMuted }}>
+      <meta.icon size={9} /> {meta.label}
+    </span>
+  );
+}
+
 function EmptyState({ message, sub, icon: Icon = Activity }: { message: string; sub?: string; icon?: React.ElementType }) {
   const { colors: C } = useTheme();
   return (
@@ -197,11 +246,6 @@ function EmptyState({ message, sub, icon: Icon = Activity }: { message: string; 
   );
 }
 
-function Divider() {
-  const { colors: C } = useTheme();
-  return <div className="h-px my-1" style={{ background: C.border }} />;
-}
-
 function ChartTooltip({ active, payload, label }: any) {
   const { colors: C } = useTheme();
   if (!active || !payload?.length) return null;
@@ -215,12 +259,115 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
+function TableHead({ cols }: { cols: string[] }) {
+  const { colors: C } = useTheme();
+  return (
+    <thead>
+      <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+        {cols.map((h) => (
+          <th key={h} className="text-left py-2.5 px-4 text-[9px] font-mono uppercase tracking-widest font-normal whitespace-nowrap" style={{ color: C.textMuted }}>{h}</th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+// ─── Onboarding: Step 2 — fill company details ────────────────────────────────
+function CompanyDetailsStep({ onBack, onSubmit }: { onBack: () => void; onSubmit: (details: CompanyDetails) => Promise<void>; }) {
+  const { colors: C } = useTheme();
+  const [details, setDetails] = useState<CompanyDetails>({
+    ceoName: "", cfoName: "", gstin: "", monthlyRevenue: "", yearlyRevenue: "",
+    registrationNumber: "", industry: "", website: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const required = ["ceoName", "gstin", "monthlyRevenue", "yearlyRevenue"] as const;
+  const isValid = required.every((k) => details[k].trim().length > 0);
+
+  function update(key: keyof CompanyDetails, value: string) {
+    setDetails((d) => ({ ...d, [key]: value }));
+  }
+
+  async function handleSubmit() {
+    if (!isValid) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSubmit(details);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to save details. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fields: { key: keyof CompanyDetails; label: string; placeholder: string; required?: boolean }[] = [
+    { key: "ceoName", label: "CEO Name", placeholder: "Jane Doe", required: true },
+    { key: "cfoName", label: "CFO Name", placeholder: "John Smith" },
+    { key: "gstin", label: "GSTIN", placeholder: "22AAAAA0000A1Z5", required: true },
+    { key: "monthlyRevenue", label: "Monthly Revenue (₹)", placeholder: "500000", required: true },
+    { key: "yearlyRevenue", label: "Yearly Revenue (₹)", placeholder: "6000000", required: true },
+    { key: "registrationNumber", label: "Company Registration No.", placeholder: "U72900DL2023PTC123456" },
+    { key: "industry", label: "Industry", placeholder: "Financial Technology" },
+    { key: "website", label: "Website", placeholder: "https://yourcompany.com" },
+  ];
+
+  return (
+    <div className="max-w-xl mx-auto">
+      <h2 className="text-xl font-semibold mb-1" style={{ color: C.textPrimary }}>Fill your company details</h2>
+      <p className="text-[11px] leading-relaxed mb-8" style={{ color: C.textMuted }}>
+        This information powers your dashboard KPIs and is shared with investors once verified.
+      </p>
+
+      <div className="space-y-4 mb-8">
+        {fields.map((f) => (
+          <div key={f.key}>
+            <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>
+              {f.label}{f.required && <span style={{ color: C.teal }}> *</span>}
+            </label>
+            <input
+              value={details[f.key]}
+              onChange={(e) => update(f.key, e.target.value)}
+              placeholder={f.placeholder}
+              type={f.key.includes("Revenue") ? "number" : "text"}
+              className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none focus:ring-1 transition-all"
+              style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {error && <p className="text-[10px] font-mono mb-4" style={{ color: "#f87171" }}>{error}</p>}
+
+      <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: C.border }}>
+        <button onClick={onBack} className="text-[10px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>
+          ← Back to documents
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={!isValid || saving}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-95"
+          style={{
+            background: isValid ? `linear-gradient(135deg, ${C.teal}, ${C.blue})` : C.surfaceHigh,
+            color: isValid ? C.bg : C.textMuted,
+            cursor: isValid && !saving ? "pointer" : "not-allowed",
+          }}
+        >
+          {saving ? "Saving..." : "Activate Dashboard"} <ChevronRight size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComplete: (docs: UploadedDoc[]) => void }) {
   const { colors: C } = useTheme();
   const [uploadedDocs, setUploadedDocs] = useState<Record<string, UploadedDoc | null>>({});
   const [dragOver, setDragOver]         = useState<string | null>(null);
-  const [step, setStep]                 = useState<"upload" | "processing">("upload");
+  const [step, setStep]                 = useState<"upload" | "details" | "processing">("upload");
   const fileInputRefs                   = useRef<Record<string, HTMLInputElement | null>>({});
 
   const total    = REQUIRED_DOCS.length;
@@ -228,31 +375,43 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
   const allDone  = done === total;
   const pct      = Math.round((done / total) * 100);
 
-async function handleFile(key: string, file: File) {
-  try {
-    await uploadDocument(file, "OTHER");
+  async function handleFile(key: string, file: File) {
+    try {
+      await uploadDocument(file, "OTHER");
 
-    setUploadedDocs((prev) => ({
-      ...prev,
-      [key]: {
-        name: file.name,
-        size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-        type: file.name.split(".").pop()?.toUpperCase() || "FILE",
-        status: "uploaded",
-        uploadedAt: new Date().toISOString(),
-      },
-    }));
-
-    alert("Document uploaded successfully");
-  } catch (err) {
-    console.error(err);
-    alert("Upload failed");
+      setUploadedDocs((prev) => ({
+        ...prev,
+        [key]: {
+          name: file.name,
+          size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+          type: file.name.split(".").pop()?.toUpperCase() || "FILE",
+          status: "uploaded",
+          uploadedAt: new Date().toISOString(),
+        },
+      }));
+    } catch (err) {
+      console.error(err);
+      alert("Upload failed");
+    }
   }
-}
 
-  function handleSubmit() {
+  function finishOnboarding() {
     setStep("processing");
     setTimeout(() => { onComplete(Object.values(uploadedDocs).filter(Boolean) as UploadedDoc[]); }, 2200);
+  }
+
+  async function handleDetailsSubmit(details: CompanyDetails) {
+    await updateCompanyProfile({
+      ceoName: details.ceoName,
+      cfoName: details.cfoName || undefined,
+      gstin: details.gstin,
+      monthlyRevenue: Number(details.monthlyRevenue),
+      yearlyRevenue: Number(details.yearlyRevenue),
+      registrationNumber: details.registrationNumber || undefined,
+      industry: details.industry || undefined,
+      website: details.website || undefined,
+    });
+    finishOnboarding();
   }
 
   if (step === "processing") {
@@ -275,11 +434,18 @@ async function handleFile(key: string, file: File) {
     );
   }
 
+  if (step === "details") {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-8 py-10 transition-colors duration-300" style={{ background: C.bg }}>
+        <CompanyDetailsStep onBack={() => setStep("upload")} onSubmit={handleDetailsSubmit} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex transition-colors duration-300" style={{ background: C.bg, fontFamily: "'Inter', sans-serif" }}>
       {/* Left panel */}
       <div className="hidden lg:flex flex-col w-[340px] shrink-0 border-r px-8 py-10 transition-colors duration-300" style={{ background: C.surface, borderColor: C.border }}>
-        {/* Logo + toggle */}
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-3">
            <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.surfaceUp }}>
@@ -293,7 +459,6 @@ async function handleFile(key: string, file: File) {
           <ThemeToggle compact />
         </div>
 
-        {/* Headline */}
         <div className="mb-10">
           <div className="text-[9px] font-mono uppercase tracking-widest mb-3" style={{ color: C.teal }}>Getting started</div>
           <h1 className="text-2xl font-semibold leading-snug mb-3" style={{ color: C.textPrimary }}>
@@ -305,7 +470,6 @@ async function handleFile(key: string, file: File) {
           </p>
         </div>
 
-        {/* Circular progress */}
         <div className="flex items-center gap-5 p-4 rounded-xl border mb-8 transition-colors duration-300" style={{ borderColor: C.tealBorder, background: C.tealGlow }}>
           <div className="relative w-14 h-14 shrink-0">
             <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
@@ -324,7 +488,6 @@ async function handleFile(key: string, file: File) {
           </div>
         </div>
 
-        {/* Benefits */}
         <div className="space-y-4 flex-1">
           {[
             { icon: ShieldCheck, label: "Institutional-grade verification", sub: "All documents reviewed by our compliance team" },
@@ -425,10 +588,10 @@ async function handleFile(key: string, file: File) {
 
           <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: C.border }}>
             <p className="text-[10px] font-mono" style={{ color: C.textMuted }}>
-              {allDone ? "All documents ready · Proceed to activate your dashboard" : `${total - done} document${total - done !== 1 ? "s" : ""} still required`}
+              {allDone ? "All documents ready · Continue to add your company details" : `${total - done} document${total - done !== 1 ? "s" : ""} still required`}
             </p>
             <button
-              onClick={handleSubmit}
+              onClick={() => setStep("details")}
               disabled={!allDone}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 hover:scale-[1.02] active:scale-95"
               style={{
@@ -438,7 +601,7 @@ async function handleFile(key: string, file: File) {
                 boxShadow: allDone ? `0 4px 20px rgba(0,201,167,0.25)` : "none",
               }}
             >
-              Activate Dashboard <ChevronRight size={13} />
+              Continue <ChevronRight size={13} />
             </button>
           </div>
         </div>
@@ -453,7 +616,6 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
   const unread = kpi.unreadNotifications ?? 0;
   return (
     <aside className="flex flex-col h-full w-[240px] shrink-0 transition-colors duration-300" style={{ background: C.surface, borderRight: `1px solid ${C.border}` }}>
-      {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5">
         <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.surfaceUp, boxShadow: `0 4px 12px rgba(0,201,167,0.3)` }}>
   <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
@@ -464,7 +626,6 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
         </div>
       </div>
 
-      {/* Entity card */}
       <div className="mx-3 mb-4 p-3 rounded-xl border transition-colors duration-300" style={{ background: C.surfaceUp, borderColor: C.border }}>
         <div className="flex items-center gap-2.5 mb-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold shrink-0" style={{ background: `linear-gradient(135deg, ${C.teal}33, ${C.blue}33)`, color: C.teal }}>
@@ -481,7 +642,6 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
         </div>
       </div>
 
-      {/* Nav groups */}
       <nav className="flex-1 px-3 overflow-y-auto space-y-4">
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
@@ -513,13 +673,11 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
         ))}
       </nav>
 
-      {/* Theme toggle */}
       <div className="mx-3 mb-3 flex items-center justify-between px-3 py-2.5 rounded-xl border transition-colors duration-300" style={{ background: C.surfaceUp, borderColor: C.border }}>
         <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>Theme</span>
         <ThemeToggle compact />
       </div>
 
-      {/* Funding bar */}
       <div className="mx-3 mb-3 p-3 rounded-xl border transition-colors duration-300" style={{ background: C.surfaceUp, borderColor: C.border }}>
         <div className="flex justify-between items-center mb-2">
           <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>Funding Round</span>
@@ -575,8 +733,8 @@ function TopBar({ section, user }: { section: string; user: AppUser | null }) {
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, deltaUp, icon: Icon, accent }: {
-  label: string; value: string | null; sub?: string; deltaUp?: boolean; icon: React.ElementType; accent?: boolean;
+function KpiCard({ label, value, sub, icon: Icon, accent }: {
+  label: string; value: string | null; sub?: string; icon: React.ElementType; accent?: boolean;
 }) {
   const { colors: C } = useTheme();
   return (
@@ -591,7 +749,7 @@ function KpiCard({ label, value, sub, deltaUp, icon: Icon, accent }: {
       {accent && <div className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${C.teal}80, transparent)` }} />}
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>{label}</span>
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform duration-200 group-hover:scale-110" style={{ background: accent ? C.tealDim : C.surfaceUp }}>
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform duration-200" style={{ background: accent ? C.tealDim : C.surfaceUp }}>
           <Icon size={12} style={{ color: accent ? C.teal : C.textMuted }} />
         </div>
       </div>
@@ -602,20 +760,6 @@ function KpiCard({ label, value, sub, deltaUp, icon: Icon, accent }: {
         {sub && <p className="text-[10px] font-mono mt-1.5" style={{ color: C.textMuted }}>{sub}</p>}
       </div>
     </div>
-  );
-}
-
-// ─── Table shell ──────────────────────────────────────────────────────────────
-function TableHead({ cols }: { cols: string[] }) {
-  const { colors: C } = useTheme();
-  return (
-    <thead>
-      <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-        {cols.map((h) => (
-          <th key={h} className="text-left py-2.5 px-4 text-[9px] font-mono uppercase tracking-widest font-normal whitespace-nowrap" style={{ color: C.textMuted }}>{h}</th>
-        ))}
-      </tr>
-    </thead>
   );
 }
 
@@ -633,7 +777,6 @@ function DashboardSection({ kpi, proposals, fundingChart, engagementChart, notif
         </h1>
       </div>
 
-      {/* KPI row */}
       <div className="grid grid-cols-5 gap-3">
         <KpiCard label="Funding Required"    value={kpi.fundingRequired}     sub="Series A target"    icon={Target}     accent />
         <KpiCard label="Funding Raised"      value={kpi.fundingRaised}       sub="To date"            icon={TrendingUp} />
@@ -642,7 +785,6 @@ function DashboardSection({ kpi, proposals, fundingChart, engagementChart, notif
         <KpiCard label="Notifications"       value={kpi.unreadNotifications !== null ? String(kpi.unreadNotifications) : null} sub="Unread" icon={Bell} />
       </div>
 
-      {/* Charts row */}
       <div className="grid grid-cols-3 gap-4">
         <Panel className="col-span-2 p-5">
           <SectionHeader title="Funding Progress" sub="Monthly capital raised vs. round target" />
@@ -686,7 +828,6 @@ function DashboardSection({ kpi, proposals, fundingChart, engagementChart, notif
         </Panel>
       </div>
 
-      {/* Proposals table */}
       <Panel className="overflow-hidden">
         <div className="p-5 pb-0">
           <SectionHeader title="Recent Investor Proposals" sub="Latest investment proposals received" action="View All" />
@@ -722,7 +863,6 @@ function DashboardSection({ kpi, proposals, fundingChart, engagementChart, notif
         )}
       </Panel>
 
-      {/* Bottom row */}
       <div className="grid grid-cols-2 gap-4">
         <Panel className="p-5">
           <SectionHeader title="Notifications" sub="Recent platform alerts" action="View All" />
@@ -775,11 +915,129 @@ function DashboardSection({ kpi, proposals, fundingChart, engagementChart, notif
   );
 }
 
-// ─── Funding section ──────────────────────────────────────────────────────────
-function FundingSection({ kpi, fundingChart }: { kpi: KpiData; fundingChart: any[] }) {
+// ─── Funding request modal ─────────────────────────────────────────────────────
+function FundingRequestModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { colors: C } = useTheme();
+  const [form, setForm] = useState({
+    title: "", description: "", fundNeeded: "", fundPurpose: "",
+    valuation: "", minimumTicket: "", equityOfferedPct: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isValid = form.title.trim() && form.description.trim() && form.fundNeeded.trim() && form.fundPurpose.trim();
+
+  function update(key: keyof typeof form, value: string) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleSubmit() {
+    if (!isValid) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createFundingOpportunity({
+        title: form.title,
+        description: form.description,
+        fundNeeded: Number(form.fundNeeded),
+        fundPurpose: form.fundPurpose,
+        valuation: form.valuation ? Number(form.valuation) : undefined,
+        minimumTicket: form.minimumTicket ? Number(form.minimumTicket) : undefined,
+        equityOfferedPct: form.equityOfferedPct ? Number(form.equityOfferedPct) : undefined,
+      });
+      onCreated();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError("Failed to submit funding request. Please check your details and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} onClick={onClose}>
+      <div className="rounded-2xl border w-full max-w-lg max-h-[90vh] overflow-y-auto" style={{ background: C.surface, borderColor: C.border, boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: C.border }}>
+          <h3 className="text-sm font-semibold" style={{ color: C.textPrimary }}>Request Funding</h3>
+          <button onClick={onClose} style={{ color: C.textMuted }}><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Round Title *</label>
+            <input value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="Series A Growth Round"
+              className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Description *</label>
+            <textarea value={form.description} onChange={(e) => update("description", e.target.value)} rows={3} placeholder="What this round is for and your growth plan"
+              className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none resize-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Amount Needed (₹) *</label>
+              <input type="number" value={form.fundNeeded} onChange={(e) => update("fundNeeded", e.target.value)} placeholder="10000000"
+                className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Valuation (₹)</label>
+              <input type="number" value={form.valuation} onChange={(e) => update("valuation", e.target.value)} placeholder="100000000"
+                className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Min. Ticket (₹)</label>
+              <input type="number" value={form.minimumTicket} onChange={(e) => update("minimumTicket", e.target.value)} placeholder="500000"
+                className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Equity Offered (%)</label>
+              <input type="number" value={form.equityOfferedPct} onChange={(e) => update("equityOfferedPct", e.target.value)} placeholder="10"
+                className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Purpose of Funds *</label>
+            <input value={form.fundPurpose} onChange={(e) => update("fundPurpose", e.target.value)} placeholder="Product development, hiring, market expansion"
+              className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none" style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }} />
+          </div>
+          {error && <p className="text-[10px] font-mono" style={{ color: "#f87171" }}>{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button onClick={handleSubmit} disabled={!isValid || saving}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-bold transition-opacity disabled:opacity-50"
+              style={{ background: `linear-gradient(135deg, ${C.teal}, ${C.blue})`, color: C.bg }}>
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              {saving ? "Submitting..." : "Submit Request"}
+            </button>
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-[12px] font-semibold border" style={{ borderColor: C.border, color: C.textPrimary }}>
+              Cancel
+            </button>
+          </div>
+          <p className="text-[9px] font-mono leading-relaxed" style={{ color: C.textDim }}>
+            Requests go to PENDING_APPROVAL until reviewed by a DNH Capital associate partner. Your company must be verified before this can go live to investors.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Funding section ──────────────────────────────────────────────────────────
+function FundingSection({ kpi, fundingChart, onRefresh }: { kpi: KpiData; fundingChart: any[]; onRefresh: () => void }) {
+  const { colors: C } = useTheme();
+  const [showRequestModal, setShowRequestModal] = useState(false);
   return (
     <div className="space-y-5">
+      {showRequestModal && <FundingRequestModal onClose={() => setShowRequestModal(false)} onCreated={onRefresh} />}
+      <div className="flex items-center justify-between">
+        <div />
+        <button
+          onClick={() => setShowRequestModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all hover:scale-[1.02] active:scale-95"
+          style={{ background: `linear-gradient(135deg, ${C.teal}, ${C.blue})`, color: C.bg }}
+        >
+          <Plus size={13} /> Request Funding
+        </button>
+      </div>
       <div className="grid grid-cols-4 gap-3">
         <KpiCard label="Funding Target"   value={kpi.fundingRequired} sub="Series A"      icon={Target}     accent />
         <KpiCard label="Capital Raised"   value={kpi.fundingRaised}   sub="To date"        icon={TrendingUp} />
@@ -887,8 +1145,267 @@ function InvestmentsSection() {
   );
 }
 
+// ─── CEO/CFO Company Updates section ───────────────────────────────────────────
+function UpdateComposer({
+  ceoName, cfoName, editing, onCancelEdit, onSave,
+}: {
+  ceoName?: string; cfoName?: string;
+  editing: CompanyUpdate | null;
+  onCancelEdit: () => void;
+  onSave: (payload: { authorRole: UpdateAuthorRole; authorName: string; title: string; content: string; category: UpdateCategory }) => Promise<void>;
+}) {
+  const { colors: C } = useTheme();
+  const [authorRole, setAuthorRole] = useState<UpdateAuthorRole>(editing?.authorRole ?? "CEO");
+  const [authorName, setAuthorName] = useState(editing?.authorName ?? ceoName ?? "");
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [content, setContent] = useState(editing?.content ?? "");
+  const [category, setCategory] = useState<UpdateCategory>(editing?.category ?? "GENERAL");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setAuthorRole(editing.authorRole);
+      setAuthorName(editing.authorName);
+      setTitle(editing.title);
+      setContent(editing.content);
+      setCategory(editing.category);
+    }
+  }, [editing]);
+
+  function switchRole(role: UpdateAuthorRole) {
+    setAuthorRole(role);
+    // Prefill the name from the profile when switching roles, unless the user has typed something custom already for this role.
+    if (!editing) setAuthorName(role === "CEO" ? (ceoName ?? "") : (cfoName ?? ""));
+  }
+
+  const isValid = authorName.trim() && title.trim() && content.trim();
+
+  async function handleSave() {
+    if (!isValid) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({ authorRole, authorName: authorName.trim(), title: title.trim(), content: content.trim(), category });
+      if (!editing) {
+        setTitle("");
+        setContent("");
+        setCategory("GENERAL");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Couldn't save this update. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel className="p-5" glow>
+      <SectionHeader
+        title={editing ? "Edit Update" : "Post a Company Update"}
+        sub="Visible to investors who have proposed to or invested in your company"
+      />
+
+      <div className="flex items-center gap-2 mb-4">
+        {(["CEO", "CFO"] as UpdateAuthorRole[]).map((role) => (
+          <button
+            key={role}
+            onClick={() => switchRole(role)}
+            className="px-3.5 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg border transition-all"
+            style={{
+              borderColor: authorRole === role ? C.tealBorder : C.border,
+              background: authorRole === role ? C.tealDim : "transparent",
+              color: authorRole === role ? C.teal : C.textMuted,
+            }}
+          >
+            Posting as {role}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Author Name</label>
+          <input
+            value={authorName}
+            onChange={(e) => setAuthorName(e.target.value)}
+            placeholder={authorRole === "CEO" ? "CEO full name" : "CFO full name"}
+            className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none"
+            style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }}
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Category</label>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as UpdateCategory)}
+            className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none"
+            style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }}
+          >
+            {UPDATE_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>Title</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Q2 revenue update, new hire, product launch"
+          className="w-full px-3.5 py-2.5 text-[12px] rounded-lg border bg-transparent focus:outline-none"
+          style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }}
+        />
+      </div>
+
+      <div className="mb-4">
+        <label className="text-[10px] font-mono uppercase tracking-widest mb-1.5 block" style={{ color: C.textMuted }}>What's happening at the company</label>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={5}
+          placeholder="Share progress, numbers, wins, or risks investors should know about..."
+          className="w-full px-3.5 py-2.5 text-[12px] leading-relaxed rounded-lg border bg-transparent focus:outline-none resize-none"
+          style={{ borderColor: C.border, color: C.textPrimary, background: C.surfaceUp }}
+        />
+      </div>
+
+      {error && <p className="text-[10px] font-mono mb-3" style={{ color: "#f87171" }}>{error}</p>}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={!isValid || saving}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+          style={{ background: `linear-gradient(135deg, ${C.teal}, ${C.blue})`, color: C.bg }}
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+          {saving ? "Saving..." : editing ? "Save Changes" : "Post Update"}
+        </button>
+        {editing && (
+          <button onClick={onCancelEdit} className="text-[10px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function UpdatesFeed({ updates, onEdit, onDelete, deletingId }: {
+  updates: CompanyUpdate[]; onEdit: (u: CompanyUpdate) => void; onDelete: (id: string) => void; deletingId: string | null;
+}) {
+  const { colors: C } = useTheme();
+  if (updates.length === 0) {
+    return (
+      <Panel className="p-5">
+        <EmptyState message="No updates posted yet" sub="Updates you post here become visible to your investors" icon={MessageSquare} />
+      </Panel>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {updates.map((u) => (
+        <Panel key={u.id} className="p-5">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <RoleBadge role={u.authorRole} />
+              <CategoryBadge category={u.category} />
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => onEdit(u)} className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: C.textMuted }} title="Edit">
+                <Pencil size={12} />
+              </button>
+              <button onClick={() => onDelete(u.id)} disabled={deletingId === u.id} className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: C.textMuted }} title="Delete">
+                {deletingId === u.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              </button>
+            </div>
+          </div>
+          <h3 className="text-[13px] font-semibold mb-1.5" style={{ color: C.textPrimary }}>{u.title}</h3>
+          <p className="text-[11px] leading-relaxed whitespace-pre-wrap mb-3" style={{ color: C.textMuted }}>{u.content}</p>
+          <div className="flex items-center gap-1.5 text-[9px] font-mono" style={{ color: C.textDim }}>
+            <span>{u.authorName}</span>
+            <span>·</span>
+            <span>{new Date(u.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
+            {u.updatedAt !== u.createdAt && <span className="italic">· edited</span>}
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
+function UpdatesSection({ ceoName, cfoName }: { ceoName?: string; cfoName?: string }) {
+  const [updates, setUpdates] = useState<CompanyUpdate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<CompanyUpdate | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      setLoading(true);
+      const list = await getCompanyUpdates();
+      setUpdates(list);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleSave(payload: { authorRole: UpdateAuthorRole; authorName: string; title: string; content: string; category: UpdateCategory }) {
+    if (editing) {
+      const updated = await editCompanyUpdate(editing.id, payload);
+      setUpdates((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setEditing(null);
+    } else {
+      const created = await createCompanyUpdate(payload);
+      setUpdates((prev) => [created, ...prev]);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete this update? Investors will no longer see it.")) return;
+    setDeletingId(id);
+    try {
+      await deleteCompanyUpdate(id);
+      setUpdates((prev) => prev.filter((u) => u.id !== id));
+      if (editing?.id === id) setEditing(null);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete update.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <UpdateComposer
+        ceoName={ceoName}
+        cfoName={cfoName}
+        editing={editing}
+        onCancelEdit={() => setEditing(null)}
+        onSave={handleSave}
+      />
+      {loading ? (
+        <Panel className="p-8 flex items-center justify-center">
+          <Loader2 size={16} className="animate-spin" style={{ color: "#4d6480" }} />
+        </Panel>
+      ) : (
+        <UpdatesFeed updates={updates} onEdit={setEditing} onDelete={handleDelete} deletingId={deletingId} />
+      )}
+    </div>
+  );
+}
+
 // ─── Documents section ────────────────────────────────────────────────────────
-function DocumentsSection({ documents }: { documents: Document[] }) {
+function DocumentsSection({ documents }: { documents: DocumentRow[] }) {
   const { colors: C } = useTheme();
   return (
     <Panel className="overflow-hidden">
@@ -1001,7 +1518,7 @@ function NotificationsSection({ notifications }: { notifications: Notification[]
 }
 
 // ─── Profile section ──────────────────────────────────────────────────────────
-function ProfileSection({ user }: { user: AppUser | null }) {
+function ProfileSection({ user, profileData }: { user: AppUser | null; profileData: any }) {
   const { colors: C } = useTheme();
   return (
     <div className="space-y-4">
@@ -1013,7 +1530,7 @@ function ProfileSection({ user }: { user: AppUser | null }) {
           </div>
           <div>
             <h3 className="text-base font-bold" style={{ color: C.textPrimary }}>{user?.company || "—"}</h3>
-            <p className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>Financial Technology · Series A</p>
+            <p className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>{profileData?.industry || "Industry not set"} · Series A</p>
             <div className="flex items-center gap-1.5 mt-2">
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: C.teal }} />
               <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: C.teal }}>Active Round · Verified Entity</span>
@@ -1026,6 +1543,10 @@ function ProfileSection({ user }: { user: AppUser | null }) {
             { label: "Email Address",  value: user?.email, icon: Mail        },
             { label: "Access Level",   value: user?.role,  icon: Shield      },
             { label: "Platform Status",value: "Active",    icon: CheckCircle },
+            { label: "CEO",            value: profileData?.ceoName, icon: User },
+            { label: "CFO",            value: profileData?.cfoName, icon: User },
+            { label: "GSTIN",          value: profileData?.gstin, icon: FileText },
+            { label: "Monthly Revenue",value: profileData?.monthlyRevenue ? `₹${Number(profileData.monthlyRevenue).toLocaleString("en-IN")}` : null, icon: DollarSign },
           ].map(({ label, value, icon: Icon }) => (
             <div key={label} className="flex items-center gap-3 p-3.5 rounded-xl border transition-all hover:translate-x-0.5" style={{ borderColor: C.border, background: C.surfaceUp }}>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: C.tealDim }}>
@@ -1037,10 +1558,6 @@ function ProfileSection({ user }: { user: AppUser | null }) {
               </div>
             </div>
           ))}
-        </div>
-        <div className="mt-4 p-4 rounded-xl border" style={{ borderColor: C.border, background: C.surfaceUp }}>
-          <p className="text-[10px] font-mono mb-1.5 uppercase tracking-widest" style={{ color: C.textMuted }}>Additional data from API</p>
-          <p className="text-[11px] leading-relaxed" style={{ color: C.textMuted }}>Fields like headquarters, website, sector, ARR, headcount, and legal registration will be populated here once your API endpoint is connected.</p>
         </div>
       </Panel>
     </div>
@@ -1086,6 +1603,16 @@ function SettingsSection() {
   );
 }
 
+// ─── Missing icon shim (Plus wasn't in the original import list) ─────────────
+function Plus({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 function AppInner() {
   const { colors: C } = useTheme();
@@ -1093,17 +1620,15 @@ function AppInner() {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
 
-  // TODO: replace with real API calls
   const [user]            = useState<AppUser>({ name: "", email: "", company: "", role: "" });
   const [kpi, setKpi]      = useState<KpiData>({ fundingRequired: null, fundingRaised: null, activeInvestors: null, verificationStatus: null, unreadNotifications: null });
   const [proposals, setProposals]       = useState<Proposal[]>([]);
-  const [documents, setDocuments]       = useState<Document[]>([]);
+  const [documents, setDocuments]       = useState<DocumentRow[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activityFeed, setActivityFeed]   = useState<ActivityItem[]>([]);
   const [fundingChart, setFundingChart]   = useState<any[]>([]);
   const [engagementChart, setEngagementChart] = useState<any[]>([]);
 
-  const [dashboardData, setDashboardData] = useState<any>(null);
   const [profileData, setProfileData]     = useState<any>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
@@ -1117,7 +1642,6 @@ function AppInner() {
 
       const dashboard = await getCompanyDashboard();
 
-      setDashboardData(dashboard);
       setProfileData(dashboard.profile);
 
       setKpi({
@@ -1128,7 +1652,6 @@ function AppInner() {
         unreadNotifications: dashboard.dashboard?.unreadNotifications ?? null,
       });
 
-      // Map raw API records into the shapes the UI components expect.
       if (dashboard.proposals) {
         setProposals(
           dashboard.proposals.map((p: any) => ({
@@ -1191,12 +1714,9 @@ function AppInner() {
   const checkDocuments = async () => {
     try {
       const documents = await getMyDocuments();
-
       setOnboardingComplete(documents.length > 0);
     } catch (error) {
       console.error("Failed to fetch documents:", error);
-
-      // If the check fails, show onboarding rather than blocking the user.
       setOnboardingComplete(false);
     } finally {
       setLoadingDocuments(false);
@@ -1217,6 +1737,7 @@ function AppInner() {
         user={user}
         onComplete={() => {
           checkDocuments();
+          loadDashboard();
         }}
       />
     );
@@ -1225,9 +1746,10 @@ function AppInner() {
   function renderSection() {
     switch (activeNav) {
       case "dashboard":    return <DashboardSection kpi={kpi} proposals={proposals} fundingChart={fundingChart} engagementChart={engagementChart} notifications={notifications} activityFeed={activityFeed} />;
-      case "funding":      return <FundingSection kpi={kpi} fundingChart={fundingChart} />;
+      case "funding":      return <FundingSection kpi={kpi} fundingChart={fundingChart} onRefresh={loadDashboard} />;
       case "proposals":    return <ProposalsSection proposals={proposals} />;
       case "investments":  return <InvestmentsSection />;
+      case "updates":      return <UpdatesSection ceoName={profileData?.ceoName} cfoName={profileData?.cfoName} />;
       case "documents":    return <DocumentsSection documents={documents} />;
       case "verification": return <VerificationSection />;
       case "notifications":return <NotificationsSection notifications={notifications} />;
@@ -1239,6 +1761,7 @@ function AppInner() {
               name: profileData?.companyName || user.name,
               company: profileData?.companyName || user.company,
             }}
+            profileData={profileData}
           />
         );
       case "settings":     return <SettingsSection />;
@@ -1269,7 +1792,7 @@ function AppInner() {
         <main className="flex-1 overflow-y-auto px-6 py-6">
           {renderSection()}
           <div className="flex items-center justify-between mt-8 pt-4 border-t text-[9px] font-mono" style={{ borderColor: C.border, color: C.textDim }}>
-            <span>DNH Capital · Company Dashboard v2.5.0</span>
+            <span>DNH Capital · Company Dashboard v2.6.0</span>
             <span>Last sync: {new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} UTC</span>
             <span className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: C.teal }} />

@@ -2,48 +2,61 @@ import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard, Building2, Lightbulb, FileText, TrendingUp,
   Bell, User, Settings, ChevronLeft, ChevronRight, Sun, Moon,
-  Search, ArrowUpRight, ArrowDownRight, MoreHorizontal,
+  Search, ArrowUpRight, MoreHorizontal,
   CheckCircle2, Clock, Bookmark, Download, Upload, Shield,
-  Globe, Activity, ExternalLink, DollarSign, Users, BarChart3,
-  Calendar, X, Menu, Plus, RefreshCw, AlertCircle, Loader2
+  Globe, ExternalLink, DollarSign, BarChart3,
+  X, Menu, Plus, RefreshCw, AlertCircle, Loader2, Send,
+  Save, Trash2,
 } from "lucide-react";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar,
-  PieChart as RechartsPie, Pie, Cell,
-} from "recharts";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { getCompanyUpdatesForCompany, type CompanyUpdate } from "../../api/company-update";
+import { Megaphone } from "lucide-react";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTE ON IMPORT PATHS
+// Adjust the relative paths below ("./axios", "./investment", etc.) so they
+// match wherever those files actually live in your project.
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  getMyProposals,
+  getMyInvestments,
+  createProposal,
+  type Proposal as ApiProposal,
+  type Investment as ApiInvestment,
+} from "../../api/investment";
+import {
+  getActiveFundingOpportunities,
+  type FundingOpportunity,
+} from "../../api/funding";
+import { getMyDocuments, uploadDocument, deleteDocument } from "../../api/document";
+import {
+  getInvestorProfile,
+  updateInvestorProfile,
+  uploadInvestorAvatar,
+  type UpdateInvestorProfileData,
+} from "../../api/profile";
+import {
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  type NotificationData,
+} from "../../api/notification";
+
+// ─── UI Types (what the dashboard renders) ────────────────────────────────────
 
 type NavItem = { id: string; label: string; icon: React.ElementType; badge?: number };
 
-export type KPIData = {
-  portfolioValue: string;
-  portfolioChange: number;
-  activeInvestments: number;
-  investmentsChange: number;
-  openProposals: number;
-  proposalsChange: number;
-  unreadNotifications: number;
-  notificationsChange: number;
-};
-
-export type PortfolioPoint = { month: string; value: number; benchmark: number };
-
-export type SectorSlice = { name: string; value: number; color: string };
-
-export type ActivityBar = { month: string; deals: number; exits: number };
-
 export type Company = {
-  id: number;
+  id: string;
+  fundingOpportunityId: string;
   name: string;
   sector: string;
   stage: string;
   valuation: string;
   raised: string;
-  growth: number;
+  growth?: number;
   location: string;
-  match: number;
+  match?: number;
   logo: string;
   color: string;
   description: string;
@@ -53,13 +66,13 @@ export type Company = {
   website: string;
 };
 
-export type Investment = {
-  id: number;
+export type InvestmentRow = {
+  id: string;
   company: string;
   sector: string;
   invested: string;
   currentValue: string;
-  roi: number;
+  roi?: number;
   stage: string;
   date: string;
   status: "active" | "exited" | "monitoring";
@@ -67,96 +80,246 @@ export type Investment = {
   color: string;
 };
 
-export type Notification = {
-  id: number;
-  type: string;
-  title: string;
-  desc: string;
-  time: string;
-  read: boolean;
-  iconType: "opportunity" | "update" | "document" | "meeting" | "alert";
-  color: string;
-};
-
-export type Proposal = {
-  id: number;
+export type ProposalRow = {
+  id: string;
   company: string;
   amount: string;
   stage: string;
   status: string;
   date: string;
-  priority: "high" | "medium" | "low";
 };
 
-export type Document = {
+export type DocumentRow = {
+  id: string;
   name: string;
   type: string;
   date: string;
-  status: "ready" | "pending" | "signed";
+  status: "ready" | "pending" | "rejected";
+  fileUrl?: string;
 };
 
-export type TimelineEvent = {
-  date: string;
-  event: string;
-  type: "report" | "proposal" | "deal" | "diligence" | "investment";
-};
-
+// Mirrors the InvestorProfile Prisma model — no invented fields.
 export type InvestorProfile = {
   initials: string;
-  name: string;
-  title: string;
-  firm: string;
-  verified: boolean;
-  focus: string;
-  checkSize: string;
-  stagePreference: string;
-  aum: string;
-  profileComplete: number;
-  profileItems: { label: string; done: boolean }[];
+  fullName: string;
+  email: string;
+  phone?: string;
+  address?: string | null;
+  investmentRangeMin?: number | null;
+  investmentRangeMax?: number | null;
+  preferredIndustries: string[];
+  bio?: string | null;
+  avatarUrl?: string | null;
+  verificationStatus: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
 };
 
-// ─── API Hooks ────────────────────────────────────────────────────────────────
-// Replace each `fetch` URL with your real backend endpoint.
-// All hooks return { data, loading, error, refetch }.
+// ─── Small helpers ─────────────────────────────────────────────────────────────
 
-function useApi<T>(url: string, deps: unknown[] = []) {
+const PALETTE = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899"];
+
+function colorFor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  return PALETTE[Math.abs(hash) % PALETTE.length];
+}
+
+function initialsFor(name: string) {
+  return (name || "?").trim().slice(0, 2).toUpperCase();
+}
+
+function fmtMoney(n: unknown) {
+  const num = Number(n);
+  if (!n || Number.isNaN(num)) return "—";
+  return `$${num.toLocaleString()}`;
+}
+
+function fmtDate(d: unknown) {
+  if (!d) return "—";
+  const date = new Date(d as string);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+}
+
+function extractErrorMessage(err: unknown): string {
+  const anyErr = err as any;
+  return anyErr?.response?.data?.message || anyErr?.message || "Something went wrong. Please try again.";
+}
+
+// ─── Generic data-fetching hook (backed by the real API) ─────────────────────
+
+function useApiCall<T>(fetcher: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // ── REPLACE URL WITH YOUR API ENDPOINT ──────────────────────────────
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
+      const result = await fetcher();
+      setData(result);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to fetch");
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [url, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  return { data, loading, error, refetch: fetchData };
+  return { data, loading, error, refetch: load };
 }
 
-// Individual hooks — swap the URL strings for your real endpoints
-const useKPIs       = () => useApi<KPIData>("/api/investor/kpis");
-const usePortfolio  = () => useApi<PortfolioPoint[]>("/api/investor/portfolio/performance");
-const useSectors    = () => useApi<SectorSlice[]>("/api/investor/portfolio/sectors");
-const useActivity   = () => useApi<ActivityBar[]>("/api/investor/portfolio/activity");
-const useCompanies  = () => useApi<Company[]>("/api/companies");
-const useInvestments = () => useApi<Investment[]>("/api/investor/investments");
-const useNotifications = () => useApi<Notification[]>("/api/investor/notifications");
-const useProposals  = () => useApi<Proposal[]>("/api/investor/proposals");
-const useDocuments  = () => useApi<Document[]>("/api/investor/documents");
-const useTimeline   = () => useApi<TimelineEvent[]>("/api/investor/timeline");
-const useProfile    = () => useApi<InvestorProfile>("/api/investor/profile");
+// ─── Real data hooks ───────────────────────────────────────────────────────────
+
+function mapCompany(fo: FundingOpportunity & { company?: any }): Company {
+  const companyInfo = (fo as any).company ?? {};
+  const name = companyInfo.name ?? fo.title ?? "Unnamed Opportunity";
+  const sharesSold = (fo as any).sharesSold ?? 0;
+  const pricePerShare = fo.pricePerShare ?? 0;
+  const raisedSoFar = sharesSold && pricePerShare ? sharesSold * pricePerShare : undefined;
+
+  return {
+    id: fo.id,
+    fundingOpportunityId: fo.id,
+    name,
+    sector: companyInfo.sector ?? "—",
+    stage: fo.status ?? "—",
+    valuation: fo.valuation ? fmtMoney(fo.valuation) : "—",
+    raised: raisedSoFar !== undefined ? fmtMoney(raisedSoFar) : fmtMoney(fo.fundNeeded),
+    location: companyInfo.location ?? companyInfo.city ?? "—",
+    logo: initialsFor(name),
+    color: colorFor(fo.id),
+    description: fo.description ?? "No description provided.",
+    founded: companyInfo.foundedYear ? String(companyInfo.foundedYear) : "—",
+    employees: companyInfo.employeeCount ? String(companyInfo.employeeCount) : "—",
+    revenue: companyInfo.revenue ? fmtMoney(companyInfo.revenue) : "—",
+    website: companyInfo.website ?? "—",
+  };
+}
+
+function useFundingOpportunities() {
+  return useApiCall<Company[]>(async () => {
+    const list = await getActiveFundingOpportunities();
+    return (list ?? []).map(mapCompany);
+  }, []);
+}
+
+function mapInvestmentStatus(status: ApiInvestment["status"]): InvestmentRow["status"] {
+  if (status === "COMPLETED") return "exited";
+  if (status === "CONFIRMED") return "active";
+  return "monitoring"; // PENDING / CANCELLED fall back here rather than being hidden
+}
+
+function mapInvestment(inv: ApiInvestment): InvestmentRow {
+  const fo: any = inv.fundingOpportunity ?? {};
+  const companyInfo = fo.company ?? {};
+  const name = companyInfo.name ?? fo.title ?? "Unknown company";
+  const amount = Number(inv.amount) || 0;
+  return {
+    id: inv.id,
+    company: name,
+    sector: companyInfo.sector ?? "—",
+    invested: fmtMoney(amount),
+    // The backend doesn't yet track live valuation changes, so current value
+    // mirrors the invested amount until that data exists.
+    currentValue: fmtMoney(amount),
+    stage: fo.status ?? "—",
+    date: fmtDate(inv.createdAt),
+    status: mapInvestmentStatus(inv.status),
+    logo: initialsFor(name),
+    color: colorFor(inv.id),
+  };
+}
+
+function useMyInvestments() {
+  return useApiCall<InvestmentRow[]>(async () => {
+    const list = await getMyInvestments();
+    return (list ?? []).map(mapInvestment);
+  }, []);
+}
+
+function mapProposalStatus(status: ApiProposal["status"]): string {
+  switch (status) {
+    case "PENDING": return "Under Review";
+    case "ACCEPTED": return "Term Sheet";
+    case "REJECTED": return "Rejected";
+    case "WITHDRAWN": return "Withdrawn";
+    default: return status;
+  }
+}
+
+function mapProposal(p: ApiProposal): ProposalRow {
+  const fo: any = p.fundingOpportunity ?? {};
+  const companyInfo = fo.company ?? {};
+  return {
+    id: p.id,
+    company: companyInfo.name ?? fo.title ?? "Unknown company",
+    amount: fmtMoney(p.proposedAmount),
+    stage: fo.status ?? "—",
+    status: mapProposalStatus(p.status),
+    date: fmtDate(p.createdAt),
+  };
+}
+
+function useMyProposals() {
+  return useApiCall<ProposalRow[]>(async () => {
+    const list = await getMyProposals();
+    return (list ?? []).map(mapProposal);
+  }, []);
+}
+
+// DocumentStatus enum is PENDING | VERIFIED | REJECTED — there is no
+// "APPROVED" status in the schema, which is why documents never showed
+// as ready before.
+function mapDocumentStatus(status: string): DocumentRow["status"] {
+  const s = (status || "").toUpperCase();
+  if (s === "VERIFIED") return "ready";
+  if (s === "REJECTED") return "rejected";
+  return "pending";
+}
+
+function useMyDocuments() {
+  return useApiCall<DocumentRow[]>(async () => {
+    const list = await getMyDocuments();
+    return (list ?? []).map((d: any) => ({
+      id: d.id,
+      // Document model stores this as `fileName`, not `name`/`filename`.
+      name: d.fileName ?? "Document",
+      type: d.type ?? "—",
+      date: fmtDate(d.createdAt),
+      status: mapDocumentStatus(d.status),
+      fileUrl: d.fileUrl,
+    }));
+  }, []);
+}
+
+function useInvestorProfile() {
+  return useApiCall<InvestorProfile>(async () => {
+    const raw = await getInvestorProfile();
+    return {
+      initials: initialsFor(raw.fullName),
+      fullName: raw.fullName,
+      email: raw.account?.email ?? "—",
+      phone: raw.account?.phone ?? undefined,
+      address: raw.address,
+      investmentRangeMin: raw.investmentRangeMin,
+      investmentRangeMax: raw.investmentRangeMax,
+      preferredIndustries: raw.preferredIndustries ?? [],
+      bio: raw.bio,
+      avatarUrl: raw.avatarUrl,
+      verificationStatus: raw.verificationStatus,
+    };
+  }, []);
+}
+
+function useNotifications() {
+  return useApiCall<NotificationData[]>(async () => {
+    const list = await getNotifications();
+    return list ?? [];
+  }, []);
+}
 
 // ─── Shared UI Primitives ─────────────────────────────────────────────────────
 
@@ -170,7 +333,7 @@ function Spinner() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+    <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
       <AlertCircle size={20} className="text-destructive" />
       <p className="text-sm text-muted-foreground">{message}</p>
       <button onClick={onRetry}
@@ -183,7 +346,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 gap-2">
+    <div className="flex flex-col items-center justify-center py-12 gap-2 px-4 text-center">
       <MoreHorizontal size={20} className="text-muted-foreground/40" />
       <p className="text-sm text-muted-foreground">{label}</p>
     </div>
@@ -218,11 +381,11 @@ function StatusBadge({ status }: { status: string }) {
     monitoring: "bg-amber-500/15 text-amber-500",
     ready: "bg-emerald-500/15 text-emerald-500",
     pending: "bg-amber-500/15 text-amber-500",
-    signed: "bg-blue-500/15 text-blue-500",
+    rejected: "bg-red-500/15 text-red-500",
     "Term Sheet": "bg-emerald-500/15 text-emerald-500",
     "Under Review": "bg-blue-500/15 text-blue-500",
-    "Due Diligence": "bg-purple-500/15 text-purple-500",
-    "Initial Review": "bg-muted text-muted-foreground",
+    "Rejected": "bg-red-500/15 text-red-500",
+    "Withdrawn": "bg-muted text-muted-foreground",
   };
   return (
     <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${map[status] ?? "bg-muted text-muted-foreground"}`}>
@@ -231,13 +394,12 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
+// ─── KPI Card (no fake trend arrows — only shows a % change when we have one) ─
 
-function KPICard({ title, value, change, changeLabel, icon: Icon, color, dark }: {
-  title: string; value: string | number; change: number; changeLabel: string;
+function KPICard({ title, value, caption, icon: Icon, color, dark }: {
+  title: string; value: string | number; caption: string;
   icon: React.ElementType; color: string; dark: boolean;
 }) {
-  const isPos = change >= 0;
   return (
     <Card dark={dark} className="p-5 hover:shadow-md transition-all duration-200">
       <div className="flex items-start justify-between mb-4">
@@ -249,35 +411,12 @@ function KPICard({ title, value, change, changeLabel, icon: Icon, color, dark }:
           <Icon size={18} style={{ color }} />
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        {isPos ? <ArrowUpRight size={14} className="text-emerald-500" /> : <ArrowDownRight size={14} className="text-red-500" />}
-        <span className={`text-xs font-semibold ${isPos ? "text-emerald-500" : "text-red-500"}`}>{isPos ? "+" : ""}{change}%</span>
-        <span className="text-xs text-muted-foreground">{changeLabel}</span>
-      </div>
+      <span className="text-xs text-muted-foreground">{caption}</span>
     </Card>
   );
 }
 
-// ─── Chart Tooltip ────────────────────────────────────────────────────────────
-
-function ChartTooltip({ active, payload, label, dark }: { active?: boolean; payload?: any[]; label?: string; dark: boolean }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className={`rounded-xl border px-3 py-2.5 text-xs ${dark ? "bg-card border-border" : "bg-white border-border"}`}
-      style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.15)" }}>
-      <div className="font-semibold text-foreground mb-1.5">{label}</div>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center gap-2 text-muted-foreground">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
-          <span>{p.name}:</span>
-          <span className="font-semibold text-foreground">{typeof p.value === "number" ? `$${p.value}M` : p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Company Card & Modal ─────────────────────────────────────────────────────
+// ─── Company Card & Modal (with a real, wired-up proposal form) ──────────────
 
 function CompanyCard({ company, dark, onClick }: { company: Company; dark: boolean; onClick: () => void }) {
   return (
@@ -291,17 +430,19 @@ function CompanyCard({ company, dark, onClick }: { company: Company; dark: boole
             <div className="text-xs text-muted-foreground">{company.sector} · {company.location}</div>
           </div>
         </div>
-        <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold"
-          style={{ background: `${company.color}18`, color: company.color }}>
-          {company.match}% match
-        </div>
+        {company.match !== undefined && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold"
+            style={{ background: `${company.color}18`, color: company.color }}>
+            {company.match}% match
+          </div>
+        )}
       </div>
       <p className="text-xs text-muted-foreground mb-3 line-clamp-2 leading-relaxed" onClick={onClick}>{company.description}</p>
       <div className="grid grid-cols-3 gap-2 mb-3" onClick={onClick}>
         {[
           { label: "Valuation", value: company.valuation },
           { label: "Raised", value: company.raised },
-          { label: "Growth", value: `+${company.growth}%`, green: true },
+          { label: "Growth", value: company.growth !== undefined ? `+${company.growth}%` : "—", green: true },
         ].map(stat => (
           <div key={stat.label} className="text-center p-2 rounded-lg" style={{ background: dark ? "#ffffff08" : "#f8fafc" }}>
             <div className={`text-xs font-bold ${stat.green ? "text-emerald-500" : "text-foreground"}`}>{stat.value}</div>
@@ -312,10 +453,10 @@ function CompanyCard({ company, dark, onClick }: { company: Company; dark: boole
       <div className="flex items-center justify-between">
         <span className="text-xs px-2 py-1 rounded-full font-medium" style={{ background: "#3b82f620", color: "#3b82f6" }}>{company.stage}</span>
         <div className="flex items-center gap-1">
-          <button className="p-1.5 rounded-lg hover:bg-muted transition-colors" onClick={e => e.stopPropagation()}>
+          <button title="Save for later" aria-label="Save for later" className="p-1.5 rounded-lg hover:bg-muted transition-colors" onClick={e => e.stopPropagation()}>
             <Bookmark size={13} className="text-muted-foreground" />
           </button>
-          <button className="p-1.5 rounded-lg hover:bg-muted transition-colors" onClick={e => { e.stopPropagation(); onClick(); }}>
+          <button title="View details" aria-label="View details" className="p-1.5 rounded-lg hover:bg-muted transition-colors" onClick={e => { e.stopPropagation(); onClick(); }}>
             <ExternalLink size={13} className="text-muted-foreground" />
           </button>
         </div>
@@ -325,6 +466,62 @@ function CompanyCard({ company, dark, onClick }: { company: Company; dark: boole
 }
 
 function CompanyModal({ company, dark, onClose }: { company: Company; dark: boolean; onClose: () => void }) {
+  const [amount, setAmount] = useState("");
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const [updates, setUpdates] = useState<CompanyUpdate[]>([]);
+const [updatesLoading, setUpdatesLoading] = useState(true);
+
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const list = await getCompanyUpdatesForCompany(company.id);
+
+      if (!cancelled) {
+        setUpdates(list);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (!cancelled) {
+        setUpdatesLoading(false);
+      }
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [company.id]);
+
+  const handleSubmit = async () => {
+    const numericAmount = Number(amount);
+    if (!amount || Number.isNaN(numericAmount) || numericAmount <= 0) {
+      setResult({ ok: false, text: "Enter a valid proposed amount." });
+      return;
+    }
+    setSubmitting(true);
+    setResult(null);
+    try {
+      await createProposal({
+        fundingOpportunityId: company.fundingOpportunityId,
+        proposedAmount: numericAmount,
+        message: message || undefined,
+      });
+      setResult({ ok: true, text: "Proposal submitted successfully." });
+      setAmount("");
+      setMessage("");
+    } catch (err) {
+      setResult({ ok: false, text: extractErrorMessage(err) });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
@@ -341,7 +538,7 @@ function CompanyModal({ company, dark, onClose }: { company: Company; dark: bool
               <p className="text-sm text-muted-foreground mt-0.5">{company.sector} · {company.stage} · {company.location}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <button onClick={onClose} title="Close" aria-label="Close" className="p-2 rounded-lg hover:bg-muted transition-colors">
             <X size={18} className="text-muted-foreground" />
           </button>
         </div>
@@ -354,7 +551,7 @@ function CompanyModal({ company, dark, onClose }: { company: Company; dark: bool
               { label: "Revenue", value: company.revenue },
               { label: "Employees", value: company.employees },
               { label: "Founded", value: company.founded },
-              { label: "Growth Rate", value: `+${company.growth}% YoY` },
+              { label: "Growth Rate", value: company.growth !== undefined ? `+${company.growth}% YoY` : "—" },
             ].map(item => (
               <div key={item.label} className="p-3 rounded-xl" style={{ background: dark ? "#ffffff08" : "#f8fafc" }}>
                 <div className="text-xs text-muted-foreground mb-1">{item.label}</div>
@@ -365,13 +562,178 @@ function CompanyModal({ company, dark, onClose }: { company: Company; dark: bool
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Globe size={12} /><span>{company.website}</span>
           </div>
-          <div className="flex gap-3 pt-2">
-            <button className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity"
-              style={{ background: company.color }}>
-              Submit Proposal
+
+          <div className="pt-2 border-t border-border">
+  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+    <Megaphone size={14} />
+    Company Updates
+  </h3>
+
+  {updatesLoading ? (
+    <div className="py-6 flex justify-center">
+      <Loader2
+        size={16}
+        className="animate-spin text-muted-foreground"
+      />
+    </div>
+  ) : updates.length > 0 ? (
+    <div className="space-y-3">
+      {updates.map((u) => (
+        <div
+          key={u.id}
+          className="p-3 rounded-xl border border-border"
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              {u.authorRole}
+            </span>
+
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wide">
+              {u.category}
+            </span>
+          </div>
+
+          <p className="text-sm font-medium text-foreground">
+            {u.title}
+          </p>
+
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-wrap">
+            {u.content}
+          </p>
+
+          <p className="text-[10px] text-muted-foreground/70 mt-2">
+            {u.authorName} · {new Date(u.createdAt).toLocaleDateString()}
+          </p>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p className="text-xs text-muted-foreground">
+      No updates posted by this company yet.
+    </p>
+  )}
+</div>
+
+          <div className="pt-2 border-t border-border">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Submit a Proposal</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Proposed amount (USD)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder="e.g. 50000"
+                  className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Message (optional)</label>
+                <textarea
+                  value={message}
+                  onChange={e => setMessage(e.target.value)}
+                  rows={3}
+                  placeholder="Add any context for the company..."
+                  className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`}
+                />
+              </div>
+              {result && (
+                <p className={`text-xs font-medium ${result.ok ? "text-emerald-500" : "text-red-500"}`}>{result.text}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-60"
+                  style={{ background: company.color }}>
+                  {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {submitting ? "Submitting..." : "Submit Proposal"}
+                </button>
+                <button onClick={onClose}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${dark ? "border-border text-foreground hover:bg-muted" : "border-border text-foreground hover:bg-gray-50"}`}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Document Upload Modal ─────────────────────────────────────────────────────
+
+const DOCUMENT_TYPES: { value: string; label: string }[] = [
+  { value: "KYC", label: "KYC / Identity Verification" },
+  { value: "FINANCIAL_STATEMENT", label: "Financial Statement" },
+  { value: "AVATAR", label: "Avatar" },
+  { value: "OTHER", label: "Other" },
+];
+
+function DocumentUploadModal({ dark, onClose, onUploaded }: {
+  dark: boolean; onClose: () => void; onUploaded: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [type, setType] = useState("KYC");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!file) { setError("Please choose a file to upload."); return; }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await uploadDocument(file, type);
+      onUploaded();
+      onClose();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}>
+      <div className={`rounded-2xl border w-full max-w-md ${dark ? "bg-card border-border" : "bg-white border-border"}`}
+        style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }}
+        onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-foreground text-sm">Upload Document</h3>
+          <button onClick={onClose} title="Close" aria-label="Close" className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X size={16} className="text-muted-foreground" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Document type</label>
+            <select value={type} onChange={e => setType(e.target.value)}
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`}>
+              {DOCUMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">File</label>
+            <input
+              type="file"
+              onChange={e => setFile(e.target.files?.[0] ?? null)}
+              className="w-full text-xs text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-white"
+            />
+          </div>
+          {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button onClick={handleSubmit} disabled={submitting}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-primary text-white hover:opacity-90 transition-opacity disabled:opacity-60">
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {submitting ? "Uploading..." : "Upload"}
             </button>
-            <button className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${dark ? "border-border text-foreground hover:bg-muted" : "border-border text-foreground hover:bg-gray-50"}`}>
-              Save to Watchlist
+            <button onClick={onClose}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border ${dark ? "border-border text-foreground hover:bg-muted" : "border-border text-foreground hover:bg-gray-50"}`}>
+              Cancel
             </button>
           </div>
         </div>
@@ -383,120 +745,47 @@ function CompanyModal({ company, dark, onClose }: { company: Company; dark: bool
 // ─── Dashboard View ───────────────────────────────────────────────────────────
 
 function DashboardView({ dark }: { dark: boolean }) {
-  const kpis = useKPIs();
-  const portfolio = usePortfolio();
-  const sectors = useSectors();
-  const investments = useInvestments();
-  const notifications = useNotifications();
-  const proposals = useProposals();
-  const timeline = useTimeline();
-  const documents = useDocuments();
-  const profile = useProfile();
-  const companies = useCompanies();
+  const investments = useMyInvestments();
+  const proposals = useMyProposals();
+  const documents = useMyDocuments();
+  const profile = useInvestorProfile();
+  const companies = useFundingOpportunities();
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
 
-  const iconMap: Record<Notification["iconType"], React.ElementType> = {
-    opportunity: Lightbulb, update: TrendingUp, document: FileText,
-    meeting: Calendar, alert: AlertCircle,
-  };
+  const portfolioValue = investments.data
+    ? investments.data.reduce((sum, inv) => sum + (Number(inv.invested.replace(/[$,]/g, "")) || 0), 0)
+    : null;
+  const activeCount = investments.data?.filter(i => i.status === "active").length;
+  const openProposalCount = proposals.data?.filter(p => p.status === "Under Review").length;
+  const documentCount = documents.data?.length;
 
   return (
     <div className="space-y-6">
       {selectedCompany && <CompanyModal company={selectedCompany} dark={dark} onClose={() => setSelectedCompany(null)} />}
 
-      {/* KPI Cards */}
+      {/* KPI Cards — all computed from real data, no invented trend %s */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {kpis.loading ? (
+        {investments.loading || proposals.loading || documents.loading ? (
           Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} dark={dark} className="p-5 h-28 animate-pulse">
               <div className="h-4 w-24 bg-muted rounded mb-3" />
               <div className="h-8 w-20 bg-muted rounded" />
             </Card>
           ))
-        ) : kpis.error ? (
-          <div className="col-span-4"><ErrorState message={kpis.error} onRetry={kpis.refetch} /></div>
-        ) : kpis.data ? (
+        ) : (
           <>
-            <KPICard title="Portfolio Value" value={kpis.data.portfolioValue} change={kpis.data.portfolioChange} changeLabel="vs last quarter" icon={DollarSign} color="#10b981" dark={dark} />
-            <KPICard title="Active Investments" value={kpis.data.activeInvestments} change={kpis.data.investmentsChange} changeLabel="vs last year" icon={TrendingUp} color="#3b82f6" dark={dark} />
-            <KPICard title="Open Proposals" value={kpis.data.openProposals} change={kpis.data.proposalsChange} changeLabel="vs last month" icon={FileText} color="#8b5cf6" dark={dark} />
-            <KPICard title="Notifications" value={kpis.data.unreadNotifications} change={kpis.data.notificationsChange} changeLabel="this week" icon={Bell} color="#f59e0b" dark={dark} />
+            <KPICard title="Portfolio Value" value={portfolioValue !== null ? fmtMoney(portfolioValue) : "—"} caption="sum of your investments" icon={DollarSign} color="#10b981" dark={dark} />
+            <KPICard title="Active Investments" value={activeCount ?? "—"} caption="currently confirmed" icon={TrendingUp} color="#3b82f6" dark={dark} />
+            <KPICard title="Open Proposals" value={openProposalCount ?? "—"} caption="awaiting response" icon={FileText} color="#8b5cf6" dark={dark} />
+            <KPICard title="Documents" value={documentCount ?? "—"} caption="uploaded to your account" icon={Upload} color="#f59e0b" dark={dark} />
           </>
-        ) : null}
+        )}
       </div>
 
-      {/* Portfolio Chart + Sector Allocation */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card dark={dark} className="xl:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="font-semibold text-foreground">Portfolio Performance</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Total value vs benchmark</p>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-primary inline-block" />Portfolio</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-accent inline-block" />Benchmark</span>
-            </div>
-          </div>
-          {portfolio.loading ? <Spinner /> : portfolio.error ? <ErrorState message={portfolio.error} onRetry={portfolio.refetch} /> : portfolio.data && portfolio.data.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={portfolio.data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="portfolioGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="benchGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.12} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={dark ? "#ffffff08" : "#00000008"} />
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#6b7f9a" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#6b7f9a" }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}M`} />
-                <Tooltip content={(props) => <ChartTooltip {...props} dark={dark} />} />
-                <Area type="monotone" dataKey="value" name="Portfolio" stroke="#10b981" strokeWidth={2} fill="url(#portfolioGrad)" dot={false} activeDot={{ r: 4, fill: "#10b981" }} />
-                <Area type="monotone" dataKey="benchmark" name="Benchmark" stroke="#3b82f6" strokeWidth={1.5} fill="url(#benchGrad)" dot={false} activeDot={{ r: 4, fill: "#3b82f6" }} strokeDasharray="4 4" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : <EmptyState label="No performance data available" />}
-        </Card>
-
-        <Card dark={dark} className="p-5">
-          <h3 className="font-semibold text-foreground mb-1">Sector Allocation</h3>
-          <p className="text-xs text-muted-foreground mb-4">By portfolio value</p>
-          {sectors.loading ? <Spinner /> : sectors.error ? <ErrorState message={sectors.error} onRetry={sectors.refetch} /> : sectors.data && sectors.data.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={140}>
-                <RechartsPie>
-                  <Pie data={sectors.data} cx="50%" cy="50%" innerRadius={42} outerRadius={62} dataKey="value" strokeWidth={0} paddingAngle={2}>
-                    {sectors.data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => `${v}%`} contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)" }} />
-                </RechartsPie>
-              </ResponsiveContainer>
-              <div className="space-y-2 mt-2">
-                {sectors.data.map(s => (
-                  <div key={s.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
-                      <span className="text-xs text-muted-foreground">{s.name}</span>
-                    </div>
-                    <span className="text-xs font-semibold text-foreground">{s.value}%</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : <EmptyState label="No sector data available" />}
-        </Card>
-      </div>
-
-      {/* Investments Table + Notifications */}
+      {/* Investments + Proposals */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Card dark={dark} className="xl:col-span-2 overflow-hidden">
-          <SectionHeader title="My Investments" subtitle="Active portfolio positions" action={
-            <button className="text-xs text-primary font-medium hover:underline">View all</button>
-          } />
+          <SectionHeader title="My Investments" subtitle="Active portfolio positions" />
           {investments.loading ? <Spinner /> : investments.error ? <ErrorState message={investments.error} onRetry={investments.refetch} /> : investments.data && investments.data.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -504,13 +793,12 @@ function DashboardView({ dark }: { dark: boolean }) {
                   <tr className={`text-[10px] font-semibold uppercase tracking-wider text-muted-foreground ${dark ? "bg-muted/30" : "bg-gray-50"}`}>
                     <th className="px-5 py-3 text-left">Company</th>
                     <th className="px-4 py-3 text-right">Invested</th>
-                    <th className="px-4 py-3 text-right">Current Value</th>
-                    <th className="px-4 py-3 text-right">ROI</th>
+                    <th className="px-4 py-3 text-left">Date</th>
                     <th className="px-4 py-3 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {investments.data.map(inv => (
+                  {investments.data.slice(0, 6).map(inv => (
                     <tr key={inv.id} className="border-t border-border hover:bg-muted/30 transition-colors">
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
@@ -518,17 +806,12 @@ function DashboardView({ dark }: { dark: boolean }) {
                             style={{ background: inv.color }}>{inv.logo}</div>
                           <div>
                             <div className="text-sm font-medium text-foreground">{inv.company}</div>
-                            <div className="text-[10px] text-muted-foreground">{inv.sector} · {inv.date}</div>
+                            <div className="text-[10px] text-muted-foreground">{inv.sector}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-right text-sm font-medium text-foreground" style={{ fontFamily: "JetBrains Mono, monospace" }}>{inv.invested}</td>
-                      <td className="px-4 py-3.5 text-right text-sm font-medium text-foreground" style={{ fontFamily: "JetBrains Mono, monospace" }}>{inv.currentValue}</td>
-                      <td className="px-4 py-3.5 text-right">
-                        <span className={`text-sm font-semibold ${inv.roi >= 0 ? "text-emerald-500" : "text-red-500"}`} style={{ fontFamily: "JetBrains Mono, monospace" }}>
-                          {inv.roi >= 0 ? "+" : ""}{inv.roi}%
-                        </span>
-                      </td>
+                      <td className="px-4 py-3.5 text-xs text-muted-foreground">{inv.date}</td>
                       <td className="px-4 py-3.5 text-center"><StatusBadge status={inv.status} /></td>
                     </tr>
                   ))}
@@ -539,139 +822,71 @@ function DashboardView({ dark }: { dark: boolean }) {
         </Card>
 
         <Card dark={dark}>
-          <SectionHeader title="Notifications" action={
-            notifications.data && <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold">
-              {notifications.data.filter(n => !n.read).length} new
-            </span>
-          } />
-          {notifications.loading ? <Spinner /> : notifications.error ? <ErrorState message={notifications.error} onRetry={notifications.refetch} /> : notifications.data && notifications.data.length > 0 ? (
-            <div className="divide-y divide-border">
-              {notifications.data.slice(0, 4).map(n => {
-                const Icon = iconMap[n.iconType] ?? Bell;
-                return (
-                  <div key={n.id} className={`px-4 py-3.5 hover:bg-muted/30 transition-colors ${n.read ? "opacity-60" : ""}`}>
-                    <div className="flex items-start gap-3">
-                      <div className="p-1.5 rounded-lg flex-shrink-0 mt-0.5" style={{ background: `${n.color}18` }}>
-                        <Icon size={12} style={{ color: n.color }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-xs font-semibold text-foreground truncate">{n.title}</span>
-                          {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-2">{n.desc}</p>
-                        <span className="text-[10px] text-muted-foreground/60 mt-1 block">{n.time}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : <EmptyState label="No notifications" />}
-        </Card>
-      </div>
-
-      {/* Proposals + Timeline + Documents/Profile */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card dark={dark}>
-          <SectionHeader title="Recent Proposals" action={<button className="text-xs text-primary font-medium hover:underline">View all</button>} />
+          <SectionHeader title="Recent Proposals" />
           {proposals.loading ? <Spinner /> : proposals.error ? <ErrorState message={proposals.error} onRetry={proposals.refetch} /> : proposals.data && proposals.data.length > 0 ? (
             <div className="divide-y divide-border">
               {proposals.data.slice(0, 4).map(p => (
                 <div key={p.id} className="px-5 py-3.5 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-foreground">{p.company}</span>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${p.priority === "high" ? "bg-red-500/15 text-red-500" : p.priority === "medium" ? "bg-amber-500/15 text-amber-500" : "bg-muted text-muted-foreground"}`}>
-                      {p.priority}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground">{p.amount} · {p.stage}</span>
                     <StatusBadge status={p.status} />
                   </div>
-                  <div className="text-[10px] text-muted-foreground/60 mt-1">{p.date}</div>
+                  <div className="text-[10px] text-muted-foreground">{p.amount} · {p.date}</div>
                 </div>
               ))}
             </div>
           ) : <EmptyState label="No proposals yet" />}
         </Card>
-
-        <Card dark={dark}>
-          <SectionHeader title="Activity Timeline" />
-          {timeline.loading ? <Spinner /> : timeline.error ? <ErrorState message={timeline.error} onRetry={timeline.refetch} /> : timeline.data && timeline.data.length > 0 ? (
-            <div className="px-5 py-4 space-y-4">
-              {timeline.data.map((t, i) => {
-                const colors: Record<TimelineEvent["type"], string> = {
-                  investment: "#10b981", deal: "#3b82f6", proposal: "#8b5cf6",
-                  diligence: "#f59e0b", report: "#6b7f9a",
-                };
-                return (
-                  <div key={i} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ background: colors[t.type] }} />
-                      {i < timeline.data!.length - 1 && <div className="w-px flex-1 mt-1 min-h-[20px]" style={{ background: "var(--border)" }} />}
-                    </div>
-                    <div className="pb-2">
-                      <p className="text-xs text-foreground font-medium leading-relaxed">{t.event}</p>
-                      <span className="text-[10px] text-muted-foreground">{t.date}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : <EmptyState label="No activity yet" />}
-        </Card>
-
-        <div className="space-y-4">
-          <Card dark={dark}>
-            <SectionHeader title="Documents" />
-            {documents.loading ? <Spinner /> : documents.error ? <ErrorState message={documents.error} onRetry={documents.refetch} /> : documents.data && documents.data.length > 0 ? (
-              <div className="divide-y divide-border">
-                {documents.data.slice(0, 3).map(d => (
-                  <div key={d.name} className="px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-foreground truncate">{d.name}</div>
-                      <div className="text-[10px] text-muted-foreground">{d.type} · {d.date}</div>
-                    </div>
-                    <StatusBadge status={d.status} />
-                  </div>
-                ))}
-              </div>
-            ) : <EmptyState label="No documents" />}
-          </Card>
-
-          <Card dark={dark} className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-foreground">Investor Profile</h3>
-              {profile.data && <span className="text-xs text-primary font-semibold">{profile.data.profileComplete}%</span>}
-            </div>
-            {profile.loading ? <Spinner /> : profile.error ? <ErrorState message={profile.error} onRetry={profile.refetch} /> : profile.data ? (
-              <>
-                <div className="w-full h-1.5 rounded-full overflow-hidden mb-3" style={{ background: dark ? "#ffffff10" : "#e2e8f0" }}>
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${profile.data.profileComplete}%` }} />
-                </div>
-                <div className="space-y-1.5">
-                  {profile.data.profileItems.map(item => (
-                    <div key={item.label} className="flex items-center gap-2 text-[10px]">
-                      {item.done ? <CheckCircle2 size={11} className="text-primary flex-shrink-0" /> : <Clock size={11} className="text-muted-foreground/50 flex-shrink-0" />}
-                      <span className={item.done ? "text-foreground" : "text-muted-foreground"}>{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : null}
-          </Card>
-        </div>
       </div>
 
-      {/* Recommended Companies */}
+      {/* Documents + Profile */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <Card dark={dark} className="xl:col-span-2">
+          <SectionHeader title="Documents" />
+          {documents.loading ? <Spinner /> : documents.error ? <ErrorState message={documents.error} onRetry={documents.refetch} /> : documents.data && documents.data.length > 0 ? (
+            <div className="divide-y divide-border">
+              {documents.data.slice(0, 4).map(d => (
+                <div key={d.id} className="px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-foreground truncate">{d.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{d.type} · {d.date}</div>
+                  </div>
+                  <StatusBadge status={d.status} />
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState label="No documents" />}
+        </Card>
+
+        <Card dark={dark} className="p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Investor Profile</h3>
+          {profile.loading ? <Spinner /> : profile.error ? <ErrorState message={profile.error} onRetry={profile.refetch} /> : profile.data ? (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white text-sm font-bold flex-shrink-0 overflow-hidden">
+                {profile.data.avatarUrl ? <img src={profile.data.avatarUrl} alt="" className="w-full h-full object-cover" /> : profile.data.initials}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground truncate">{profile.data.fullName}</div>
+                <div className="text-xs text-muted-foreground truncate">{profile.data.email}</div>
+                {profile.data.verificationStatus === "VERIFIED" && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Shield size={11} className="text-primary" />
+                    <span className="text-[10px] text-primary font-medium">Verified</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </Card>
+      </div>
+
+      {/* Open Funding Opportunities */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="font-semibold text-foreground">Recommended Companies</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Based on your investment thesis</p>
+            <h3 className="font-semibold text-foreground">Open Funding Opportunities</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Active rounds you can submit a proposal on</p>
           </div>
-          <button className="text-xs text-primary font-medium hover:underline">Explore all</button>
         </div>
         {companies.loading ? <Spinner /> : companies.error ? <ErrorState message={companies.error} onRetry={companies.refetch} /> : companies.data && companies.data.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -679,7 +894,7 @@ function DashboardView({ dark }: { dark: boolean }) {
               <CompanyCard key={c.id} company={c} dark={dark} onClick={() => setSelectedCompany(c)} />
             ))}
           </div>
-        ) : <EmptyState label="No company recommendations yet" />}
+        ) : <EmptyState label="No open funding opportunities right now" />}
       </div>
     </div>
   );
@@ -688,12 +903,12 @@ function DashboardView({ dark }: { dark: boolean }) {
 // ─── Explore View ─────────────────────────────────────────────────────────────
 
 function ExploreView({ dark }: { dark: boolean }) {
-  const { data, loading, error, refetch } = useCompanies();
+  const { data, loading, error, refetch } = useFundingOpportunities();
   const [selected, setSelected] = useState<Company | null>(null);
   const [search, setSearch] = useState("");
   const [sector, setSector] = useState("All");
 
-  const sectors = ["All", ...Array.from(new Set((data ?? []).map(c => c.sector)))];
+  const sectors = ["All", ...Array.from(new Set((data ?? []).map(c => c.sector).filter(s => s && s !== "—")))];
 
   const filtered = (data ?? []).filter(c =>
     (sector === "All" || c.sector === sector) &&
@@ -706,26 +921,28 @@ function ExploreView({ dark }: { dark: boolean }) {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className={`flex items-center gap-2 flex-1 px-3 py-2.5 rounded-xl border text-sm ${dark ? "bg-muted/50 border-border" : "bg-white border-border"}`}>
           <Search size={14} className="text-muted-foreground flex-shrink-0" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search companies, sectors..."
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search opportunities, sectors..."
             className="bg-transparent text-foreground placeholder:text-muted-foreground outline-none flex-1 text-sm" />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {sectors.map(s => (
-            <button key={s} onClick={() => setSector(s)}
-              className={`text-xs px-3 py-2 rounded-xl font-medium transition-colors border ${sector === s ? "bg-primary text-white border-primary" : dark ? "bg-card border-border text-muted-foreground hover:border-primary/40" : "bg-white border-border text-muted-foreground hover:border-primary/40"}`}>
-              {s}
-            </button>
-          ))}
-        </div>
+        {sectors.length > 1 && (
+          <div className="flex gap-2 flex-wrap">
+            {sectors.map(s => (
+              <button key={s} onClick={() => setSector(s)}
+                className={`text-xs px-3 py-2 rounded-xl font-medium transition-colors border ${sector === s ? "bg-primary text-white border-primary" : dark ? "bg-card border-border text-muted-foreground hover:border-primary/40" : "bg-white border-border text-muted-foreground hover:border-primary/40"}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {loading ? <Spinner /> : error ? <ErrorState message={error} onRetry={refetch} /> : filtered.length > 0 ? (
         <>
-          <p className="text-xs text-muted-foreground">{filtered.length} companies found</p>
+          <p className="text-xs text-muted-foreground">{filtered.length} opportunities found</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(c => <CompanyCard key={c.id} company={c} dark={dark} onClick={() => setSelected(c)} />)}
           </div>
         </>
-      ) : <EmptyState label="No companies match your search" />}
+      ) : <EmptyState label="No opportunities match your search" />}
     </div>
   );
 }
@@ -733,12 +950,14 @@ function ExploreView({ dark }: { dark: boolean }) {
 // ─── Investments View ─────────────────────────────────────────────────────────
 
 function InvestmentsView({ dark }: { dark: boolean }) {
-  const investments = useInvestments();
-  const activity = useActivity();
+  const investments = useMyInvestments();
+
+  const totalInvested = investments.data?.reduce((sum, inv) => sum + (Number(inv.invested.replace(/[$,]/g, "")) || 0), 0);
+  const exitedCount = investments.data?.filter(i => i.status === "exited").length;
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {investments.loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <Card key={i} dark={dark} className="p-5 h-28 animate-pulse">
@@ -748,9 +967,9 @@ function InvestmentsView({ dark }: { dark: boolean }) {
           ))
         ) : investments.data ? (
           <>
-            <KPICard title="Total Invested" value="—" change={0} changeLabel="from API" icon={DollarSign} color="#10b981" dark={dark} />
-            <KPICard title="Current Value" value="—" change={0} changeLabel="from API" icon={TrendingUp} color="#3b82f6" dark={dark} />
-            <KPICard title="Realized Gains" value="—" change={0} changeLabel="from API" icon={BarChart3} color="#8b5cf6" dark={dark} />
+            <KPICard title="Total Invested" value={totalInvested !== undefined ? fmtMoney(totalInvested) : "—"} caption="across all positions" icon={DollarSign} color="#10b981" dark={dark} />
+            <KPICard title="Active Positions" value={investments.data.filter(i => i.status === "active").length} caption="currently confirmed" icon={TrendingUp} color="#3b82f6" dark={dark} />
+            <KPICard title="Exited" value={exitedCount ?? 0} caption="completed positions" icon={BarChart3} color="#8b5cf6" dark={dark} />
           </>
         ) : null}
       </div>
@@ -763,10 +982,8 @@ function InvestmentsView({ dark }: { dark: boolean }) {
               <thead>
                 <tr className={`text-[10px] font-semibold uppercase tracking-wider text-muted-foreground ${dark ? "bg-muted/30" : "bg-gray-50"}`}>
                   <th className="px-5 py-3 text-left">Company</th>
-                  <th className="px-4 py-3 text-left">Stage</th>
+                  <th className="px-4 py-3 text-left">Round Status</th>
                   <th className="px-4 py-3 text-right">Invested</th>
-                  <th className="px-4 py-3 text-right">Current Value</th>
-                  <th className="px-4 py-3 text-right">ROI</th>
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-center">Status</th>
                 </tr>
@@ -786,10 +1003,6 @@ function InvestmentsView({ dark }: { dark: boolean }) {
                     </td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{inv.stage}</td>
                     <td className="px-4 py-4 text-right text-sm font-medium text-foreground" style={{ fontFamily: "JetBrains Mono, monospace" }}>{inv.invested}</td>
-                    <td className="px-4 py-4 text-right text-sm font-medium text-foreground" style={{ fontFamily: "JetBrains Mono, monospace" }}>{inv.currentValue}</td>
-                    <td className="px-4 py-4 text-right text-sm font-semibold text-emerald-500" style={{ fontFamily: "JetBrains Mono, monospace" }}>
-                      {inv.roi >= 0 ? "+" : ""}{inv.roi}%
-                    </td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{inv.date}</td>
                     <td className="px-4 py-4 text-center"><StatusBadge status={inv.status} /></td>
                   </tr>
@@ -799,35 +1012,22 @@ function InvestmentsView({ dark }: { dark: boolean }) {
           </div>
         ) : <EmptyState label="No investments yet" />}
       </Card>
-
-      <Card dark={dark} className="p-5">
-        <h3 className="font-semibold text-foreground mb-4">Monthly Deal Activity</h3>
-        {activity.loading ? <Spinner /> : activity.error ? <ErrorState message={activity.error} onRetry={activity.refetch} /> : activity.data && activity.data.length > 0 ? (
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={activity.data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={dark ? "#ffffff08" : "#00000008"} />
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#6b7f9a" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#6b7f9a" }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)" }} />
-              <Bar dataKey="deals" name="New Deals" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="exits" name="Exits" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : <EmptyState label="No activity data" />}
-      </Card>
     </div>
   );
 }
 
 // ─── Proposals View ───────────────────────────────────────────────────────────
 
-function ProposalsView({ dark }: { dark: boolean }) {
-  const { data, loading, error, refetch } = useProposals();
+function ProposalsView({ dark, onNavigate }: { dark: boolean; onNavigate: (id: string) => void }) {
+  const { data, loading, error, refetch } = useMyProposals();
   return (
     <div className="space-y-5">
       <div className="flex justify-between items-center">
-        <p className="text-sm text-muted-foreground">{data ? `${data.length} proposals in progress` : ""}</p>
-        <button className="flex items-center gap-2 text-xs px-4 py-2.5 rounded-xl bg-primary text-white font-semibold hover:opacity-90 transition-opacity">
+        <p className="text-sm text-muted-foreground">{data ? `${data.length} proposals submitted` : ""}</p>
+        {/* Previously an alert(); now actually takes the investor somewhere useful. */}
+        <button
+          onClick={() => onNavigate("explore")}
+          className="flex items-center gap-2 text-xs px-4 py-2.5 rounded-xl bg-primary text-white font-semibold hover:opacity-90 transition-opacity">
           <Plus size={13} />New Proposal
         </button>
       </div>
@@ -839,17 +1039,7 @@ function ProposalsView({ dark }: { dark: boolean }) {
                 <h3 className="font-semibold text-foreground">{p.company}</h3>
                 <div className="text-xs text-muted-foreground mt-0.5">{p.stage} · {p.amount} · Submitted {p.date}</div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${p.priority === "high" ? "bg-red-500/15 text-red-500" : p.priority === "medium" ? "bg-amber-500/15 text-amber-500" : "bg-muted text-muted-foreground"}`}>
-                  {p.priority} priority
-                </span>
-                <StatusBadge status={p.status} />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center gap-3">
-              <button className="text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary font-medium hover:bg-primary/20 transition-colors">View Details</button>
-              <button className="text-xs px-3 py-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors">Edit</button>
-              <button className="text-xs px-3 py-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors">Withdraw</button>
+              <StatusBadge status={p.status} />
             </div>
           </Card>
         ))
@@ -861,12 +1051,32 @@ function ProposalsView({ dark }: { dark: boolean }) {
 // ─── Documents View ───────────────────────────────────────────────────────────
 
 function DocumentsView({ dark }: { dark: boolean }) {
-  const { data, loading, error, refetch } = useDocuments();
+  const { data, loading, error, refetch } = useMyDocuments();
+  const [showUpload, setShowUpload] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Delete this document? This cannot be undone.")) return;
+    setDeletingId(id);
+    try {
+      await deleteDocument(id);
+      refetch();
+    } catch (err) {
+      alert(extractErrorMessage(err));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {showUpload && (
+        <DocumentUploadModal dark={dark} onClose={() => setShowUpload(false)} onUploaded={refetch} />
+      )}
       <Card dark={dark} className="overflow-hidden">
         <SectionHeader title="All Documents" action={
-          <button className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-primary/10 text-primary font-medium">
+          <button onClick={() => setShowUpload(true)}
+            className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-primary/10 text-primary font-medium hover:opacity-90 transition-opacity">
             <Upload size={12} />Upload
           </button>
         } />
@@ -879,20 +1089,37 @@ function DocumentsView({ dark }: { dark: boolean }) {
                   <th className="px-4 py-3 text-left">Type</th>
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-center">Status</th>
-                  <th className="px-4 py-3 text-center">Action</th>
+                  <th className="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {data.map(d => (
-                  <tr key={d.name} className="border-t border-border hover:bg-muted/30 transition-colors">
+                  <tr key={d.id} className="border-t border-border hover:bg-muted/30 transition-colors">
                     <td className="px-5 py-4 text-sm font-medium text-foreground">{d.name}</td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{d.type}</td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{d.date}</td>
                     <td className="px-4 py-4 text-center"><StatusBadge status={d.status} /></td>
                     <td className="px-4 py-4 text-center">
-                      <button className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-                        <Download size={13} className="text-muted-foreground" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => d.fileUrl && window.open(d.fileUrl, "_blank")}
+                          disabled={!d.fileUrl}
+                          title="Download"
+                          aria-label="Download document"
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-40">
+                          <Download size={13} className="text-muted-foreground" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(d.id)}
+                          disabled={deletingId === d.id}
+                          title="Delete"
+                          aria-label="Delete document"
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-40">
+                          {deletingId === d.id
+                            ? <Loader2 size={13} className="animate-spin text-muted-foreground" />
+                            : <Trash2 size={13} className="text-muted-foreground" />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -907,97 +1134,285 @@ function DocumentsView({ dark }: { dark: boolean }) {
 
 // ─── Notifications View ───────────────────────────────────────────────────────
 
+function notifIcon(type: NotificationData["type"]) {
+  switch (type) {
+    case "PROPOSAL":
+      return FileText;
+
+    case "INVESTMENT":
+      return TrendingUp;
+
+    case "FUNDING":
+      return Building2;
+
+    case "DOCUMENT":
+      return Upload;
+
+    case "ACCOUNT":
+      return User;
+
+    case "SYSTEM":
+      return Bell;
+
+    default:
+      return Bell;
+  }
+}
+
 function NotificationsView({ dark }: { dark: boolean }) {
   const { data, loading, error, refetch } = useNotifications();
-  const iconMap: Record<Notification["iconType"], React.ElementType> = {
-    opportunity: Lightbulb, update: TrendingUp, document: FileText,
-    meeting: Calendar, alert: AlertCircle,
+  const [markingAll, setMarkingAll] = useState(false);
+
+  const handleMarkAll = async () => {
+    setMarkingAll(true);
+    try {
+      await markAllNotificationsRead();
+      refetch();
+    } finally {
+      setMarkingAll(false);
+    }
   };
+
+  const handleClick = async (n: NotificationData) => {
+    if (n.isRead) return;
+    try {
+      await markNotificationRead(n.id);
+      refetch();
+    } catch {
+      // silent — user can just click again
+    }
+  };
+
+  const unreadCount = data?.filter(n => !n.isRead).length ?? 0;
+
   return (
-    <div className="space-y-3">
-      {loading ? <Spinner /> : error ? <ErrorState message={error} onRetry={refetch} /> : data && data.length > 0 ? (
-        data.map(n => {
-          const Icon = iconMap[n.iconType] ?? Bell;
-          return (
-            <Card key={n.id} dark={dark} className={`p-4 transition-opacity ${n.read ? "opacity-60" : ""}`}>
-              <div className="flex items-start gap-4">
-                <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: `${n.color}18` }}>
-                  <Icon size={16} style={{ color: n.color }} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-foreground">{n.title}</span>
-                    {!n.read && <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{unreadCount > 0 ? `${unreadCount} unread` : "You're all caught up"}</p>
+        {unreadCount > 0 && (
+          <button onClick={handleMarkAll} disabled={markingAll}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-primary/10 text-primary font-medium disabled:opacity-50">
+            {markingAll ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+            Mark all read
+          </button>
+        )}
+      </div>
+      <Card dark={dark} className="overflow-hidden">
+        {loading ? <Spinner /> : error ? <ErrorState message={error} onRetry={refetch} /> : data && data.length > 0 ? (
+          <div className="divide-y divide-border">
+            {data.map(n => {
+              const Icon = notifIcon(n.type);
+              return (
+                <button key={n.id} onClick={() => handleClick(n)}
+                  className={`w-full text-left px-5 py-3.5 flex items-start gap-3 hover:bg-muted/30 transition-colors ${!n.isRead ? "bg-primary/5" : ""}`}>
+                  <div className="p-2 rounded-lg flex-shrink-0" style={{ background: "#3b82f618" }}>
+                    <Icon size={14} style={{ color: "#3b82f6" }} />
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{n.desc}</p>
-                  <span className="text-[10px] text-muted-foreground/60 mt-1.5 block">{n.time}</span>
-                </div>
-              </div>
-            </Card>
-          );
-        })
-      ) : <EmptyState label="No notifications" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{n.title}</span>
+                      {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{n.message}</p>
+                    <p className="text-[10px] text-muted-foreground/70 mt-1">{fmtDate(n.createdAt)}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : <EmptyState label="No notifications yet" />}
+      </Card>
     </div>
   );
 }
 
 // ─── Profile View ─────────────────────────────────────────────────────────────
 
-function ProfileView({ dark }: { dark: boolean }) {
-  const { data, loading, error, refetch } = useProfile();
+function ProfileView({ dark, onNavigate }: { dark: boolean; onNavigate: (id: string) => void }) {
+  const { data, loading, error, refetch } = useInvestorProfile();
   return (
     <div className="space-y-5 max-w-2xl">
       {loading ? <Spinner /> : error ? <ErrorState message={error} onRetry={refetch} /> : data ? (
-        <>
-          <Card dark={dark} className="p-6">
-            <div className="flex items-center gap-5 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-white text-xl font-bold">
-                {data.initials}
+        <Card dark={dark} className="p-6">
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-5">
+              <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-white text-xl font-bold overflow-hidden">
+                {data.avatarUrl ? <img src={data.avatarUrl} alt="" className="w-full h-full object-cover" /> : data.initials}
               </div>
               <div>
-                <h2 className="text-lg font-bold text-foreground">{data.name}</h2>
-                <p className="text-sm text-muted-foreground">{data.title} · {data.firm}</p>
-                {data.verified && (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Shield size={12} className="text-primary" />
-                    <span className="text-xs text-primary font-medium">Verified Accredited Investor</span>
-                  </div>
-                )}
+                <h2 className="text-lg font-bold text-foreground">{data.fullName}</h2>
+                <p className="text-sm text-muted-foreground">{data.email}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Shield size={12} className={data.verificationStatus === "VERIFIED" ? "text-primary" : "text-muted-foreground"} />
+                  <span className={`text-xs font-medium ${data.verificationStatus === "VERIFIED" ? "text-primary" : "text-muted-foreground"}`}>
+                    {data.verificationStatus === "VERIFIED" ? "Verified Accredited Investor" : data.verificationStatus.replace("_", " ")}
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: "Investment Focus", value: data.focus },
-                { label: "Check Size", value: data.checkSize },
-                { label: "Stage Preference", value: data.stagePreference },
-                { label: "AUM", value: data.aum },
-              ].map(f => (
-                <div key={f.label}>
-                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{f.label}</div>
-                  <div className="text-sm text-foreground">{f.value}</div>
-                </div>
-              ))}
+            <button onClick={() => onNavigate("settings")}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-primary/10 text-primary font-medium hover:opacity-90 transition-opacity flex-shrink-0">
+              <Settings size={12} />Edit
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { label: "Address", value: data.address || "—" },
+              { label: "Ticket Size", value: data.investmentRangeMin != null && data.investmentRangeMax != null ? `${fmtMoney(data.investmentRangeMin)} – ${fmtMoney(data.investmentRangeMax)}` : "—" },
+              { label: "Preferred Industries", value: data.preferredIndustries.length > 0 ? data.preferredIndustries.join(", ") : "—" },
+              { label: "Phone", value: data.phone || "—" },
+            ].map(f => (
+              <div key={f.label}>
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{f.label}</div>
+                <div className="text-sm text-foreground">{f.value}</div>
+              </div>
+            ))}
+          </div>
+          {data.bio && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Bio</div>
+              <p className="text-sm text-foreground leading-relaxed">{data.bio}</p>
             </div>
-          </Card>
-          <Card dark={dark} className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-foreground">Profile Completion</h3>
-              <span className="text-xs text-primary font-semibold">{data.profileComplete}%</span>
-            </div>
-            <div className="w-full h-2 rounded-full overflow-hidden mb-3" style={{ background: dark ? "#ffffff10" : "#e2e8f0" }}>
-              <div className="h-full rounded-full bg-primary" style={{ width: `${data.profileComplete}%` }} />
-            </div>
-            <div className="space-y-2">
-              {data.profileItems.map(item => (
-                <div key={item.label} className="flex items-center gap-3">
-                  {item.done ? <CheckCircle2 size={14} className="text-primary" /> : <Clock size={14} className="text-muted-foreground/50" />}
-                  <span className={`text-xs ${item.done ? "text-foreground" : "text-muted-foreground"}`}>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </>
+          )}
+        </Card>
       ) : null}
+    </div>
+  );
+}
+
+// ─── Settings View (profile editing + avatar — this is where full name /
+// address live, since that's what the InvestorProfile model actually stores) ─
+
+function SettingsView({ dark }: { dark: boolean }) {
+  const profile = useInvestorProfile();
+  const [fullName, setFullName] = useState("");
+  const [address, setAddress] = useState("");
+  const [bio, setBio] = useState("");
+  const [minTicket, setMinTicket] = useState("");
+  const [maxTicket, setMaxTicket] = useState("");
+  const [industries, setIndustries] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  useEffect(() => {
+    if (profile.data) {
+      setFullName(profile.data.fullName ?? "");
+      setAddress(profile.data.address ?? "");
+      setBio(profile.data.bio ?? "");
+      setMinTicket(profile.data.investmentRangeMin != null ? String(profile.data.investmentRangeMin) : "");
+      setMaxTicket(profile.data.investmentRangeMax != null ? String(profile.data.investmentRangeMax) : "");
+      setIndustries((profile.data.preferredIndustries ?? []).join(", "));
+    }
+  }, [profile.data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveResult(null);
+    try {
+      const payload: UpdateInvestorProfileData = {
+        fullName: fullName || undefined,
+        address: address || undefined,
+        bio: bio || undefined,
+        investmentRangeMin: minTicket ? Number(minTicket) : undefined,
+        investmentRangeMax: maxTicket ? Number(maxTicket) : undefined,
+        preferredIndustries: industries
+          ? industries.split(",").map(s => s.trim()).filter(Boolean)
+          : undefined,
+      };
+      await updateInvestorProfile(payload);
+      setSaveResult({ ok: true, text: "Profile updated successfully." });
+      profile.refetch();
+    } catch (err) {
+      setSaveResult({ ok: false, text: extractErrorMessage(err) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAvatarUpload = async () => {
+    if (!avatarFile) return;
+    setUploadingAvatar(true);
+    try {
+      await uploadInvestorAvatar(avatarFile);
+      setAvatarFile(null);
+      profile.refetch();
+    } catch (err) {
+      setSaveResult({ ok: false, text: extractErrorMessage(err) });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  if (profile.loading) return <Spinner />;
+  if (profile.error) return <ErrorState message={profile.error} onRetry={profile.refetch} />;
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      <Card dark={dark} className="p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground">Avatar</h3>
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center text-white text-lg font-bold overflow-hidden flex-shrink-0">
+            {profile.data?.avatarUrl
+              ? <img src={profile.data.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              : initialsFor(profile.data?.fullName ?? "?")}
+          </div>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={e => setAvatarFile(e.target.files?.[0] ?? null)}
+            className="text-xs text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary"
+          />
+          <button onClick={handleAvatarUpload} disabled={!avatarFile || uploadingAvatar}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-primary/10 text-primary font-medium disabled:opacity-50 flex-shrink-0">
+            {uploadingAvatar ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            {uploadingAvatar ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+      </Card>
+
+      <Card dark={dark} className="p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground">Profile Details</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Full name</label>
+            <input value={fullName} onChange={e => setFullName(e.target.value)}
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Address</label>
+            <input value={address} onChange={e => setAddress(e.target.value)}
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Min ticket size (USD)</label>
+            <input type="number" min="0" value={minTicket} onChange={e => setMinTicket(e.target.value)}
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Max ticket size (USD)</label>
+            <input type="number" min="0" value={maxTicket} onChange={e => setMaxTicket(e.target.value)}
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs text-muted-foreground mb-1 block">Preferred industries (comma-separated)</label>
+            <input value={industries} onChange={e => setIndustries(e.target.value)} placeholder="Fintech, Healthtech, SaaS"
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs text-muted-foreground mb-1 block">Bio</label>
+            <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}
+              className={`w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none ${dark ? "bg-muted/50 border-border text-foreground" : "bg-white border-border text-foreground"}`} />
+          </div>
+        </div>
+        {saveResult && <p className={`text-xs font-medium ${saveResult.ok ? "text-emerald-500" : "text-red-500"}`}>{saveResult.text}</p>}
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-primary text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-60">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {saving ? "Saving..." : "Save Changes"}
+        </button>
+      </Card>
     </div>
   );
 }
@@ -1006,8 +1421,7 @@ function ProfileView({ dark }: { dark: boolean }) {
 
 const navItems: NavItem[] = [
   { id: "dashboard",      label: "Dashboard",               icon: LayoutDashboard },
-  { id: "explore",        label: "Explore Companies",        icon: Building2 },
-  { id: "opportunities",  label: "Opportunities",            icon: Lightbulb },
+  { id: "explore",        label: "Explore Opportunities",    icon: Building2 },
   { id: "proposals",      label: "My Proposals",             icon: FileText },
   { id: "investments",    label: "My Investments",           icon: TrendingUp },
   { id: "documents",      label: "Documents",                icon: Download },
@@ -1017,8 +1431,8 @@ const navItems: NavItem[] = [
 ];
 
 const pageTitles: Record<string, string> = {
-  dashboard: "Dashboard", explore: "Explore Companies",
-  opportunities: "Investment Opportunities", proposals: "My Proposals",
+  dashboard: "Dashboard", explore: "Explore Opportunities",
+  proposals: "My Proposals",
   investments: "My Investments", documents: "Documents",
   notifications: "Notifications", profile: "Profile", settings: "Settings",
 };
@@ -1031,13 +1445,19 @@ export default function App() {
   const [activeNav, setActiveNav] = useState("dashboard");
   const [mobileSidebar, setMobileSidebar] = useState(false);
 
-  // Badge counts — fetched independently so sidebar stays live
+  const proposals = useMyProposals();
+  const profile = useInvestorProfile();
   const notifications = useNotifications();
-  const proposals = useProposals();
 
   const badgeFor = (id: string): number | undefined => {
-    if (id === "notifications") return notifications.data?.filter(n => !n.read).length || undefined;
-    if (id === "proposals") return proposals.data?.filter(p => p.status === "Under Review" || p.status === "Initial Review").length || undefined;
+    if (id === "proposals") {
+      const count = proposals.data?.filter(p => p.status === "Under Review").length || 0;
+      return count > 0 ? count : undefined;
+    }
+    if (id === "notifications") {
+      const count = notifications.data?.filter(n => !n.isRead).length || 0;
+      return count > 0 ? count : undefined;
+    }
     return undefined;
   };
 
@@ -1062,12 +1482,8 @@ export default function App() {
         style={{ boxShadow: dark ? "1px 0 0 rgba(255,255,255,0.04)" : "1px 0 0 rgba(0,0,0,0.06)" }}>
         <div className={`flex items-center h-14 px-4 border-b border-sidebar-border flex-shrink-0 ${sidebarOpen ? "gap-3" : "justify-center"}`}>
           <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 bg-primary">
-  <img
-    src="/logo.png"
-    alt="DnH FINTECH"
-    className="w-full h-full object-cover"
-  />
-</div>
+            <img src="/logo.png" alt="DnH FINTECH" className="w-full h-full object-cover" />
+          </div>
           {sidebarOpen && (
             <div>
               <div className="text-sm font-bold text-sidebar-foreground" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DnH FINTECH</div>
@@ -1108,6 +1524,8 @@ export default function App() {
 
         <div className="p-3 border-t border-sidebar-border flex-shrink-0">
           <button onClick={() => setSidebarOpen(!sidebarOpen)}
+            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
             className="w-full hidden lg:flex items-center justify-center p-2 rounded-xl hover:bg-sidebar-accent/50 text-muted-foreground transition-colors">
             {sidebarOpen ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}
           </button>
@@ -1118,7 +1536,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-14 flex-shrink-0 flex items-center px-5 gap-4 border-b border-border bg-card"
           style={{ boxShadow: dark ? "0 1px 0 rgba(255,255,255,0.04)" : "0 1px 0 rgba(0,0,0,0.05)" }}>
-          <button onClick={() => setMobileSidebar(!mobileSidebar)} className="lg:hidden p-2 rounded-lg hover:bg-muted transition-colors">
+          <button onClick={() => setMobileSidebar(!mobileSidebar)} title="Open menu" aria-label="Open menu" className="lg:hidden p-2 rounded-lg hover:bg-muted transition-colors">
             <Menu size={16} className="text-muted-foreground" />
           </button>
           <h1 className="text-sm font-bold text-foreground" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -1130,6 +1548,8 @@ export default function App() {
             <span className="text-muted-foreground">Search...</span>
           </div>
           <button onClick={() => setDark(!dark)}
+            title={dark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all duration-200 border-border hover:border-primary/40"
             style={{ background: dark ? "#ffffff08" : "#f0f4f8" }}>
             {dark
@@ -1138,34 +1558,29 @@ export default function App() {
             }
           </button>
           <button onClick={() => setActiveNav("notifications")}
+            title="Notifications" aria-label="Notifications"
             className="relative p-2 rounded-xl hover:bg-muted transition-colors border border-border">
             <Bell size={15} className="text-muted-foreground" />
-            {notifications.data && notifications.data.some(n => !n.read) && (
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
+            {(notifications.data?.filter(n => !n.isRead).length ?? 0) > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
             )}
           </button>
           <button onClick={() => setActiveNav("profile")}
-            className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0 hover:opacity-90 transition-opacity">
-            {/* Initials rendered from profile API once loaded */}
-            {/* Replace with: profile.data?.initials ?? "—" */}
-            —
+            title="Profile" aria-label="Profile"
+            className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0 hover:opacity-90 transition-opacity overflow-hidden">
+            {profile.data?.avatarUrl ? <img src={profile.data.avatarUrl} alt="" className="w-full h-full object-cover" /> : (profile.data?.initials ?? "—")}
           </button>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5 lg:p-6">
           {activeNav === "dashboard"     && <DashboardView dark={dark} />}
           {activeNav === "explore"       && <ExploreView dark={dark} />}
-          {activeNav === "opportunities" && <ExploreView dark={dark} />}
-          {activeNav === "proposals"     && <ProposalsView dark={dark} />}
+          {activeNav === "proposals"     && <ProposalsView dark={dark} onNavigate={setActiveNav} />}
           {activeNav === "investments"   && <InvestmentsView dark={dark} />}
           {activeNav === "documents"     && <DocumentsView dark={dark} />}
           {activeNav === "notifications" && <NotificationsView dark={dark} />}
-          {activeNav === "profile"       && <ProfileView dark={dark} />}
-          {activeNav === "settings"      && (
-            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-              Settings panel — connect your API
-            </div>
-          )}
+          {activeNav === "profile"       && <ProfileView dark={dark} onNavigate={setActiveNav} />}
+          {activeNav === "settings"      && <SettingsView dark={dark} />}
         </main>
       </div>
     </div>
