@@ -3305,7 +3305,7 @@ function Contact() {
               {
                 icon: <Phone size={16} color="#005F6B" />,
                 label: "Phone",
-                val: "+91 93448 85612",
+                val: "+91 7042997771",
               },
             ].map((r) => (
               <div
@@ -3950,7 +3950,7 @@ function Footer() {
             fontFamily: "Inter, sans-serif",
           }}
         >
-          © 2010 DNH Fintech Pvt. Ltd. All rights reserved.
+          © 2010 A&A International Pvt. Ltd. All rights reserved.
         </p>
 
         <div
