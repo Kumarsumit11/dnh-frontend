@@ -6,7 +6,7 @@ import Dashboard from "./pages/dashboard";
 
 import GetStarted from "./pages/GetStarted";
 import InvestorDashboard from "./pages/InvestorDashboard";
-import CompanyDashboard from "./pages/CompanyDashboard";
+import CompanyDashboard from "./pages/CompanyDashboard ";
 import AssociateDashboard from "./pages/AssociateDashboard";
 
 

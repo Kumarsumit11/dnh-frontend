@@ -20,6 +20,7 @@ export const getInvestorProfile = async () => {
 };
 
 export interface CompanyDetailsPayload {
+  companyName?: string;              // ← new
   gstin?: string;
   ceoName?: string;
   cfoName?: string;
@@ -30,6 +31,7 @@ export interface CompanyDetailsPayload {
   website?: string;
   foundedYear?: number;
   teamSize?: number;
+  informationMemo?: InformationMemoPayload; // ← new
 }
 
 export const updateCompanyProfile = async (data: CompanyDetailsPayload) => {
@@ -56,3 +58,46 @@ export const uploadInvestorAvatar = async (file: File) => {
 
   return response.data.data;
 };
+
+
+
+// api/profile.ts
+export interface InformationMemoPayload {
+  borrower?: string;
+  promoters?: string;
+  coBorrowerGuarantor?: string;
+  aboutBorrowingEntity?: string;
+  registeredAddress?: string;
+  corporateOffice?: string;
+  aboutGroup?: string;
+  aboutPromoter?: string;
+  shareholdingPattern?: string;
+  directorsProfile?: string;
+  financials?: Record<string, Record<string, string>>;
+  repaymentHistory?: string;
+  expansionPlan?: string;
+  employeeStrength?: string;
+  industryOverview?: string;
+  topCustomers?: string;
+  currentBankingArrangement?: string;
+  proposedTransaction?: string;
+  proposedBankingArrangement?: string;
+  collateralSecurity?: string;
+  otherSecurity?: string;
+  swotAnalysis?: string;
+}
+
+export interface CompanyDetailsPayload {
+  companyName?: string;              // ← new
+  gstin?: string;
+  ceoName?: string;
+  cfoName?: string;
+  monthlyRevenue?: number;
+  yearlyRevenue?: number;
+  registrationNumber?: string;
+  industry?: string;
+  website?: string;
+  foundedYear?: number;
+  teamSize?: number;
+  informationMemo?: InformationMemoPayload; // ← new
+}
