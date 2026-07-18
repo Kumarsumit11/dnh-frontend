@@ -27,6 +27,7 @@ import {
   Zap,
   BarChart2,
   Globe,
+  GlobeIcon,
 } from "lucide-react";
 
 const MIN_LOAN = 1_00_00_000;
@@ -108,10 +109,10 @@ type AuthMode = "login" | "signup";
 type SignupStep = 1 | 2 | 3;
 
 const STATS = [
-  { value: "₹2,400Cr+", label: "Assets Deployed", icon: TrendingUp },
-  { value: "850+", label: "Verified Investors", icon: User },
-  { value: "340+", label: "Active Companies", icon: Building2 },
-  { value: "1,200+", label: "Deals Closed", icon: Zap },
+  { value: "₹2.5B+", label: "CAPITAL RAISED", icon: TrendingUp },
+  { value: "150+", label: "TRANSACTION", icon: User },
+  { value: "25+", label: "COUNTRIES", icon: GlobeIcon },
+  { value: "4000+", label: "Deals Closed", icon: Zap },
 ];
 
 function getPasswordStrength(p: string) {
