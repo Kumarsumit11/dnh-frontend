@@ -3713,7 +3713,7 @@ function Footer() {
               marginBottom: 16,
             }}
           >
-            DNH Fintech
+            DnH Fintech
           </h3>
 
           <p

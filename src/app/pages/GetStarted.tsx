@@ -27,11 +27,19 @@ import {
   Zap,
   BarChart2,
   Globe,
+  GlobeIcon,
 } from "lucide-react";
 
-const MIN_LOAN = 1_00_00_000;
-const MAX_LOAN = 500_00_00_000;
-const LOAN_STEP = 50_00_000;
+// Bounds are defined separately per unit so switching between Cr and Lakh
+// doesn't produce a nonsensical range (previously both units shared the
+// same 0.1–50 bounds, which only made sense for Crore).
+const MIN_LOAN_CR = 0.1; // 10L
+const MAX_LOAN_CR = 50;  // 50Cr
+const LOAN_STEP_CR = 0.1;
+
+const MIN_LOAN_L = MIN_LOAN_CR * 100; // 10L
+const MAX_LOAN_L = MAX_LOAN_CR * 100; // 5000L (=50Cr)
+const LOAN_STEP_L = 1;
 
 function fmtCr(n: number) {
   if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(1)}Cr`;
@@ -39,8 +47,12 @@ function fmtCr(n: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
 
+function fmtMoney(n: number) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
+}
+
 function DonutMini({ principal, interest, emi }: { principal: number; interest: number; emi: number }) {
-  const r = 38;
+  const r = 68; // enlarged radius for better visibility
   const circ = 2 * Math.PI * r;
   const total = principal + interest;
   const pDash = total > 0 ? (principal / total) * circ : 0;
@@ -49,7 +61,7 @@ function DonutMini({ principal, interest, emi }: { principal: number; interest: 
   if (total === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-2">
-        <div className="w-20 h-20 rounded-full border-2 border-dashed border-white/10 flex items-center justify-center">
+        <div className="w-32 h-32 rounded-full border-2 border-dashed border-white/10 flex items-center justify-center">
           <span className="text-white/20 text-xs">—</span>
         </div>
         <p className="text-white/30 text-[11px]">Adjust inputs</p>
@@ -58,45 +70,46 @@ function DonutMini({ principal, interest, emi }: { principal: number; interest: 
   }
 
   const pPct = Math.round((principal / total) * 100);
+  const iPct = 100 - pPct;
 
   return (
-    <div className="flex items-center gap-5">
-      <div className="relative flex-shrink-0" style={{ width: 96, height: 96 }}>
-        <svg width="96" height="96" viewBox="0 0 96 96" style={{ transform: "rotate(-90deg)" }}>
-          <circle cx="48" cy="48" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="10" />
-          <circle cx="48" cy="48" r={r} fill="none" stroke="#3b82f6" strokeWidth="10"
+    <div className="flex flex-col items-center gap-4">
+      <div className="relative flex-shrink-0" style={{ width: 160, height: 160 }}>
+        <svg width="160" height="160" viewBox="0 0 160 160" style={{ transform: "rotate(-90deg)" }}>
+          <circle cx="80" cy="80" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="15" />
+          <circle cx="80" cy="80" r={r} fill="none" stroke="#3b82f6" strokeWidth="15"
             strokeDasharray={`${pDash} ${circ}`} strokeLinecap="round"
             style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
-          <circle cx="48" cy="48" r={r} fill="none" stroke="#f59e0b" strokeWidth="10"
+          <circle cx="80" cy="80" r={r} fill="none" stroke="#f59e0b" strokeWidth="15"
             strokeDasharray={`${iDash} ${circ}`} strokeDashoffset={-pDash} strokeLinecap="round"
             style={{ transition: "stroke-dasharray 0.6s cubic-bezier(0.4,0,0.2,1), stroke-dashoffset 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[8px] text-white/30 uppercase tracking-wider">EMI</span>
-          <span className="text-xs font-bold text-white leading-none" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCr(emi)}</span>
+          <span className="text-[11px] text-white/40 uppercase tracking-wider">EMI / mo</span>
+          <span className="text-lg font-bold text-white leading-tight text-center px-2" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtMoney(emi)}</span>
         </div>
       </div>
-      <div className="flex-1 space-y-2.5">
+      <div className="flex-1 w-full space-y-2.5">
         {[
           { label: "Principal", color: "#3b82f6", value: principal, pct: pPct },
-          { label: "Interest", color: "#f59e0b", value: interest, pct: 100 - pPct },
+          { label: "Interest", color: "#f59e0b", value: interest, pct: iPct },
         ].map(({ label, color, value, pct }) => (
           <div key={label}>
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-                <span className="text-[11px] text-white/50">{label}</span>
+                <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                <span className="text-xs text-white/60">{label}</span>
               </div>
-              <span className="text-[11px] font-semibold text-white/80" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCr(value)}</span>
+              <span className="text-xs font-semibold text-white/90" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCr(value)} · {pct}%</span>
             </div>
-            <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
               <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color, transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
             </div>
           </div>
         ))}
         <div className="flex items-center justify-between pt-1.5 border-t border-white/8">
-          <span className="text-[10px] text-white/30">Total outflow</span>
-          <span className="text-[11px] font-bold text-white/70" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCr(principal + interest)}</span>
+          <span className="text-[11px] text-white/40">Total outflow</span>
+          <span className="text-xs font-bold text-white/80" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCr(principal + interest)}</span>
         </div>
       </div>
     </div>
@@ -108,10 +121,10 @@ type AuthMode = "login" | "signup";
 type SignupStep = 1 | 2 | 3;
 
 const STATS = [
-  { value: "₹2,400Cr+", label: "Assets Deployed", icon: TrendingUp },
-  { value: "850+", label: "Verified Investors", icon: User },
-  { value: "340+", label: "Active Companies", icon: Building2 },
-  { value: "1,200+", label: "Deals Closed", icon: Zap },
+  { value: "₹2.5B+", label: "CAPITAL RAISED", icon: TrendingUp },
+  { value: "150+", label: "TRANSACTION", icon: User },
+  { value: "25+", label: "COUNTRIES", icon: GlobeIcon },
+  { value: "4000+", label: "Deals Closed", icon: Zap },
 ];
 
 function getPasswordStrength(p: string) {
@@ -171,21 +184,59 @@ export default function GetStarted() {
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [loanAmount, setLoanAmount] = useState(MIN_LOAN);
+  // EMI calculator state
+  const [loanAmountCr, setLoanAmountCr] = useState(1); // value in whatever unit is currently selected
+  const [loanUnit, setLoanUnit] = useState<"cr" | "l">("cr");
   const [interestRate, setInterestRate] = useState(8.5);
   const [loanTenure, setLoanTenure] = useState(20);
   const [emi, setEmi] = useState(0);
   const [principal, setPrincipal] = useState(0);
   const [interest, setInterest] = useState(0);
 
+  // Bounds/step depend on which unit is currently active, so the input
+  // limits always make sense for the unit being displayed.
+  const currentMin = loanUnit === "cr" ? MIN_LOAN_CR : MIN_LOAN_L;
+  const currentMax = loanUnit === "cr" ? MAX_LOAN_CR : MAX_LOAN_L;
+  const currentStep = loanUnit === "cr" ? LOAN_STEP_CR : LOAN_STEP_L;
+
+  // Convert typed value + unit to actual loan amount in rupees
+  const loanAmount = loanUnit === "cr"
+    ? loanAmountCr * 1_00_00_000
+    : loanAmountCr * 1_00_000;
+
+  // When the unit toggle changes, convert the existing entered value so the
+  // actual loan amount is preserved instead of silently changing by 100x
+  // (e.g. "1" in Cr mode becoming "1" in Lakh mode, which is 100x smaller).
+  const handleUnitChange = (newUnit: "cr" | "l") => {
+    if (newUnit === loanUnit) return;
+    let convertedValue = loanAmountCr;
+    if (newUnit === "l" && loanUnit === "cr") {
+      convertedValue = loanAmountCr * 100; // Cr -> Lakh
+    } else if (newUnit === "cr" && loanUnit === "l") {
+      convertedValue = loanAmountCr / 100; // Lakh -> Cr
+    }
+    const min = newUnit === "cr" ? MIN_LOAN_CR : MIN_LOAN_L;
+    const max = newUnit === "cr" ? MAX_LOAN_CR : MAX_LOAN_L;
+    setLoanAmountCr(Math.max(min, Math.min(max, convertedValue)));
+    setLoanUnit(newUnit);
+  };
+
   useEffect(() => {
     const r = interestRate / 12 / 100;
     const n = loanTenure * 12;
-    if (!r || !n) return;
+    if (r === 0 || n === 0 || loanAmount === 0) {
+      setEmi(0);
+      setPrincipal(0);
+      setInterest(0);
+      return;
+    }
     const e = (loanAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-    setEmi(isFinite(e) ? e : 0);
+    const calculatedEmi = isFinite(e) ? e : 0;
+    const totalPayment = calculatedEmi * n;
+    const totalInterest = totalPayment - loanAmount;
+    setEmi(calculatedEmi);
     setPrincipal(loanAmount);
-    setInterest(isFinite(e * n - loanAmount) ? e * n - loanAmount : 0);
+    setInterest(totalInterest > 0 ? totalInterest : 0);
   }, [loanAmount, interestRate, loanTenure]);
 
   const pwStrength = getPasswordStrength(signupPassword);
@@ -330,16 +381,26 @@ export default function GetStarted() {
             <div className="flex-1 space-y-2">
               <div>
                 <label className="block text-xs font-semibold text-white/40 mb-1 uppercase tracking-wider">Loan Amount</label>
-                <input
-                  type="number"
-                  min={MIN_LOAN}
-                  max={MAX_LOAN}
-                  step={LOAN_STEP}
-                  value={loanAmount}
-                  onChange={(e) => setLoanAmount(Math.max(MIN_LOAN, Math.min(MAX_LOAN, Number(e.target.value))))}
-                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
-                  placeholder="₹1Cr"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={currentMin}
+                    max={currentMax}
+                    step={currentStep}
+                    value={loanAmountCr}
+                    onChange={(e) => setLoanAmountCr(Math.max(currentMin, Math.min(currentMax, Number(e.target.value) || 0)))}
+                    className="flex-1 bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                    placeholder="1"
+                  />
+                  <select
+                    value={loanUnit}
+                    onChange={(e) => handleUnitChange(e.target.value as "cr" | "l")}
+                    className="w-20 bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                  >
+                    <option value="cr">Cr</option>
+                    <option value="l">Lakh</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-white/40 mb-1 uppercase tracking-wider">Interest Rate</label>
@@ -349,7 +410,7 @@ export default function GetStarted() {
                   max={20}
                   step={0.1}
                   value={interestRate}
-                  onChange={(e) => setInterestRate(Math.max(5, Math.min(20, Number(e.target.value))))}
+                  onChange={(e) => setInterestRate(Math.max(5, Math.min(20, Number(e.target.value) || 0)))}
                   className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
                   placeholder="8.5%"
                 />
@@ -362,7 +423,7 @@ export default function GetStarted() {
                   max={30}
                   step={1}
                   value={loanTenure}
-                  onChange={(e) => setLoanTenure(Math.max(1, Math.min(30, Number(e.target.value))))}
+                  onChange={(e) => setLoanTenure(Math.max(1, Math.min(30, Number(e.target.value) || 0)))}
                   className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
                   placeholder="20 yrs"
                 />
@@ -374,6 +435,18 @@ export default function GetStarted() {
               <DonutMini principal={principal} interest={interest} emi={emi} />
             </div>
           </div>
+
+          {/* EMI summary below */}
+          {emi > 0 && (
+            <div className="pt-3 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">Monthly EMI</span>
+                <span className="text-sm font-bold text-white" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {fmtMoney(emi)}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
