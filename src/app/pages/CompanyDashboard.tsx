@@ -443,6 +443,15 @@ function TableHead({ cols }: { cols: string[] }) {
 }
 
 // ─── Information Memo: types & config ─────────────────────────────────────────
+interface DebtFundingRow {
+  id: string;
+  lenderName: string;
+  roi: string;
+  totalSanction: string;
+  emi: string;
+  outstanding: string;
+}
+
 interface InformationMemo {
   borrower: string;
   promoters: string;
@@ -456,16 +465,14 @@ interface InformationMemo {
   directorsProfile: string;
   financials: Record<string, Record<string, string>>;
   repaymentHistory: string;
-  expansionPlan: string;
+  AmountFundRequired: string;
   employeeStrength: string;
   industryOverview: string;
-  topCustomers: string;
-  currentBankingArrangement: string;
-  proposedTransaction: string;
-  proposedBankingArrangement: string;
+  top5Clients: string;
+  debtFunding: DebtFundingRow[];
   collateralSecurity: string;
-  otherSecurity: string;
-  swotAnalysis: string;
+  
+  
 }
 
 type MemoFieldType = "input" | "textarea";
@@ -476,20 +483,22 @@ const FINANCIAL_ROWS: { key: string; label: string }[] = [
   { key: "netSales",         label: "Net Sales" },
   { key: "ebitda",           label: "EBITDA" },
   { key: "ebitdaMargin",     label: "EBITDA Margin" },
-  { key: "std",              label: "STD" },
-  { key: "ltd",              label: "LTD" },
+  { key: "std(short term loan)",              label: "STD(short term loan)" },
+  { key: "ltd(long term loan)",              label: "LTD(long term loan)" },
   { key: "totalDebt",        label: "Total Debt" },
-  { key: "tnw",              label: "TNW" },
-  { key: "nwc",              label: "NWC" },
   { key: "totalDebtEbitda",  label: "Total Debt / EBITDA" },
   { key: "currentRatio",     label: "Current Ratio" },
 ];
 
-const FINANCIAL_YEARS: { key: string; label: string; tag: string }[] = [
-  { key: "fy2023", label: "FY 2023", tag: "Audited" },
-  { key: "fy2024", label: "FY 2024", tag: "Audited" },
-  { key: "fy2025", label: "FY 2025", tag: "Audited" },
-  { key: "fy2026", label: "FY 2026", tag: "Provisional" },
+const FINANCIAL_YEARS = [
+  { key: "3rd Last y", label: "3rd Last y", tag: "AUDITED" },
+  { key: "2nd Last y", label: "2nd Last y", tag: "AUDITED" },
+  { key: "Last y", label: "Last y", tag: "AUDITED" },
+  { key: "Current y", label: "Current y", tag: "PROVISIONAL" },
+
+  { key: "Next y", label: "Next y", tag: "PROJECTED" },
+  { key: "2nd Next y", label: "2nd Next y", tag: "PROJECTED" },
+  { key: "3rd Next y", label: "3rd Next y", tag: "PROJECTED" },
 ];
 
 const MEMO_SECTIONS: MemoSection[] = [
@@ -520,38 +529,27 @@ const MEMO_SECTIONS: MemoSection[] = [
   {
     id: "business", title: "Business Outlook", sub: "Growth plans and market position", icon: Rocket,
     fields: [
-      { key: "expansionPlan", label: "Expansion Plan (FY 2026-27 & beyond)", type: "textarea" },
+      { key: "AmountFundRequired", label: "AmountFundRequired", type: "textarea" },
       { key: "employeeStrength", label: "Employee Strength", type: "input", placeholder: "e.g. 120 employees" },
       { key: "industryOverview", label: "Industry Overview", type: "textarea" },
-      { key: "topCustomers", label: "Top Customers", type: "textarea" },
+      { key: "top5Clients", label: "Top 5 Clients", type: "textarea" },
+       { key: "collateralSecurity", label: "collateralSecurity", type: "textarea" },
     ],
   },
   {
-    id: "banking", title: "Banking & Security", sub: "Facilities and collateral", icon: ShieldCheck,
-    fields: [
-      { key: "currentBankingArrangement", label: "Current Banking Arrangement", type: "textarea" },
-      { key: "proposedTransaction", label: "Proposed Transaction", type: "textarea" },
-      { key: "proposedBankingArrangement", label: "Proposed Banking Arrangement", type: "textarea" },
-      { key: "collateralSecurity", label: "Collateral Security", type: "textarea" },
-      { key: "otherSecurity", label: "Other Security", type: "textarea" },
-    ],
+    id: "debtFunding", title: "Debt Funding", sub: "Lender-wise sanctioned facilities, ROI, EMI and outstanding balances", icon: Landmark,
+    fields: [],
   },
-  {
-    id: "swot", title: "SWOT Analysis", sub: "Strengths, weaknesses, opportunities, threats", icon: Target,
-    fields: [
-      { key: "swotAnalysis", label: "SWOT Analysis", type: "textarea", placeholder: "Summarize strengths, weaknesses, opportunities and threats" },
-    ],
-  },
+ 
 ];
-
+ 
 const EMPTY_MEMO: InformationMemo = {
   borrower: "", promoters: "", coBorrowerGuarantor: "", aboutBorrowingEntity: "",
   registeredAddress: "", corporateOffice: "", aboutGroup: "", aboutPromoter: "",
   shareholdingPattern: "", directorsProfile: "",
   financials: Object.fromEntries(FINANCIAL_ROWS.map((r) => [r.key, Object.fromEntries(FINANCIAL_YEARS.map((y) => [y.key, ""]))])),
-  repaymentHistory: "", expansionPlan: "", employeeStrength: "", industryOverview: "",
-  topCustomers: "", currentBankingArrangement: "", proposedTransaction: "",
-  proposedBankingArrangement: "", collateralSecurity: "", otherSecurity: "", swotAnalysis: "",
+  repaymentHistory: "", AmountFundRequired:"", employeeStrength: "", industryOverview: "",
+  top5Clients: "", debtFunding: [], collateralSecurity:"",
 };
 
 // ─── Styled form primitives ───────────────────────────────────────────────────
@@ -617,6 +615,12 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
   const [sectionIdx, setSectionIdx] = useState(0);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState<string | null>(null);
+  const [clients, setClients] = useState([
+  {
+    name: "",
+    revenue: "",
+  },
+]);
 
   const section = MEMO_SECTIONS[sectionIdx];
   const isLast  = sectionIdx === MEMO_SECTIONS.length - 1;
@@ -626,11 +630,71 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
     setMemo((m) => ({ ...m, [key]: value }));
   }
 
-  function updateFinancial(rowKey: string, yearKey: string, value: string) {
+ function updateFinancial(rowKey: string, yearKey: string, value: string) {
+  setMemo((m) => {
+    const financials = {
+      ...m.financials,
+      [rowKey]: {
+        ...m.financials[rowKey],
+        [yearKey]: value,
+      },
+    };
+
+    // Calculate EBITDA Margin
+    const sales = parseFloat(financials.netSales?.[yearKey] || "0");
+    const ebitda = parseFloat(financials.ebitda?.[yearKey] || "0");
+
+    financials.ebitdaMargin = {
+      ...financials.ebitdaMargin,
+      [yearKey]:
+        sales > 0 ? ((ebitda / sales) * 100).toFixed(2) : "",
+    };
+
+    // Calculate Total Debt
+    const std = parseFloat(financials.std?.[yearKey] || "0");
+    const ltd = parseFloat(financials.ltd?.[yearKey] || "0");
+
+    financials.totalDebt = {
+      ...financials.totalDebt,
+      [yearKey]: (std + ltd).toString(),
+    };
+    // Auto Calculate Total Debt / EBITDA
+const totalDebt = std + ltd;
+
+financials.totalDebtEbitda = {
+  ...financials.totalDebtEbitda,
+  [yearKey]:
+    ebitda > 0
+      ? (totalDebt / ebitda).toFixed(2)
+      : "",
+};
+
+    return {
+      ...m,
+      financials,
+    };
+  });
+}
+
+  function addDebtRow() {
     setMemo((m) => ({
       ...m,
-      financials: { ...m.financials, [rowKey]: { ...m.financials[rowKey], [yearKey]: value } },
+      debtFunding: [
+        ...m.debtFunding,
+        { id: `debt_${Date.now()}_${m.debtFunding.length}`, lenderName: "", roi: "", totalSanction: "", emi: "", outstanding: "" },
+      ],
     }));
+  }
+
+  function updateDebtRow(id: string, field: keyof DebtFundingRow, value: string) {
+    setMemo((m) => ({
+      ...m,
+      debtFunding: m.debtFunding.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+    }));
+  }
+
+  function removeDebtRow(id: string) {
+    setMemo((m) => ({ ...m, debtFunding: m.debtFunding.filter((r) => r.id !== id) }));
   }
 
   const requiredOk = memo.borrower.trim().length > 0;
@@ -658,6 +722,13 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
     if (isFirst) { onBack(); return; }
     setSectionIdx((i) => i - 1);
   }
+
+  const debtInputStyle = {
+    borderColor: C.border,
+    color: C.textPrimary,
+    background: isLight ? "#ffffff" : C.surfaceUp,
+    boxShadow: isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+  };
 
   return (
     <div className="w-full max-w-4xl mx-auto" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -782,15 +853,45 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
                         <td className="py-2.5 px-4 text-[11px] font-semibold whitespace-nowrap" style={{ color: C.textPrimary }}>{row.label}</td>
                         {FINANCIAL_YEARS.map((y) => (
                           <td key={y.key} className="py-1.5 px-2">
-                            <input
-                              value={memo.financials[row.key]?.[y.key] ?? ""}
-                              onChange={(e) => updateFinancial(row.key, y.key, e.target.value)}
-                              placeholder="—"
-                              className="w-28 px-2.5 py-1.5 text-[12px] font-mono rounded-lg border transition-all focus:outline-none"
-                              style={{ borderColor: C.border, color: C.textPrimary, background: isLight ? "#ffffff" : C.surfaceUp, boxShadow: isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none" }}
-                              onFocus={(e) => { e.target.style.borderColor = C.teal; e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`; }}
-                              onBlur={(e) => { e.target.style.borderColor = C.border; e.target.style.boxShadow = isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"; }}
-                            />
+                           <input
+  value={memo.financials[row.key]?.[y.key] ?? ""}
+  onChange={(e) => updateFinancial(row.key, y.key, e.target.value)}
+  disabled={
+  row.key === "ebitdaMargin" ||
+  row.key === "totalDebt" ||
+  row.key === "totalDebtEbitda"
+}
+  placeholder="—"
+  className="w-28 px-2.5 py-1.5 text-[12px] font-mono rounded-lg border transition-all focus:outline-none"
+  style={{
+    borderColor: C.border,
+    color: C.textPrimary,
+    background:
+      row.key === "ebitdaMargin" || row.key === "totalDebt"
+        ? (isLight ? "#f1f5f9" : C.surface)
+        : (isLight ? "#ffffff" : C.surfaceUp),
+    boxShadow: isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+    cursor:
+      row.key === "ebitdaMargin" || row.key === "totalDebt"
+        ? "not-allowed"
+        : "text",
+  }}
+  onFocus={(e) => {
+    if (
+      row.key !== "ebitdaMargin" &&
+      row.key !== "totalDebt"
+    ) {
+      e.target.style.borderColor = C.teal;
+      e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`;
+    }
+  }}
+  onBlur={(e) => {
+    e.target.style.borderColor = C.border;
+    e.target.style.boxShadow = isLight
+      ? "0 1px 2px rgba(0,0,0,0.04)"
+      : "none";
+  }}
+/>
                           </td>
                         ))}
                       </tr>
@@ -808,19 +909,318 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
                 />
               </div>
             </div>
+          ) : section.id === "debtFunding" ? (
+            <div className="space-y-4">
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.border, boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.05)" : "none" }}>
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}`, background: isLight ? "#f8fafc" : C.surfaceUp }}>
+                      <th className="text-left py-3 px-4 text-[9px] font-mono uppercase tracking-widest font-semibold" style={{ color: C.textMuted }}>Lender Name</th>
+                      <th className="text-left py-3 px-4 text-[9px] font-mono uppercase tracking-widest font-semibold" style={{ color: C.textMuted }}>ROI (%)</th>
+                      <th className="text-left py-3 px-4 text-[9px] font-mono uppercase tracking-widest font-semibold" style={{ color: C.textMuted }}>Total Sanction (₹ Cr.)</th>
+                      <th className="text-left py-3 px-4 text-[9px] font-mono uppercase tracking-widest font-semibold" style={{ color: C.textMuted }}>EMI (₹)</th>
+                      <th className="text-left py-3 px-4 text-[9px] font-mono uppercase tracking-widest font-semibold" style={{ color: C.textMuted }}>Outstanding (₹ Cr.)</th>
+                      <th className="w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memo.debtFunding.map((row, ri) => (
+                      <tr
+                        key={row.id}
+                        className="transition-colors"
+                        style={{ borderBottom: ri < memo.debtFunding.length - 1 ? `1px solid ${C.border}` : "none" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = isLight ? "#f8fafc" : C.surfaceUp)}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <td className="py-1.5 px-2">
+                          <input
+                            value={row.lenderName}
+                            onChange={(e) => updateDebtRow(row.id, "lenderName", e.target.value)}
+                            placeholder="e.g. HDFC Bank"
+                            className="w-40 px-2.5 py-1.5 text-[12px] rounded-lg border transition-all focus:outline-none"
+                            style={debtInputStyle}
+                            onFocus={(e) => { e.target.style.borderColor = C.teal; e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`; }}
+                            onBlur={(e) => { e.target.style.borderColor = C.border; e.target.style.boxShadow = isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"; }}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            value={row.roi}
+                            onChange={(e) => updateDebtRow(row.id, "roi", e.target.value)}
+                            placeholder="—"
+                            className="w-20 px-2.5 py-1.5 text-[12px] font-mono rounded-lg border transition-all focus:outline-none"
+                            style={debtInputStyle}
+                            onFocus={(e) => { e.target.style.borderColor = C.teal; e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`; }}
+                            onBlur={(e) => { e.target.style.borderColor = C.border; e.target.style.boxShadow = isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"; }}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            value={row.totalSanction}
+                            onChange={(e) => updateDebtRow(row.id, "totalSanction", e.target.value)}
+                            placeholder="—"
+                            className="w-28 px-2.5 py-1.5 text-[12px] font-mono rounded-lg border transition-all focus:outline-none"
+                            style={debtInputStyle}
+                            onFocus={(e) => { e.target.style.borderColor = C.teal; e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`; }}
+                            onBlur={(e) => { e.target.style.borderColor = C.border; e.target.style.boxShadow = isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"; }}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            value={row.emi}
+                            onChange={(e) => updateDebtRow(row.id, "emi", e.target.value)}
+                            placeholder="—"
+                            className="w-24 px-2.5 py-1.5 text-[12px] font-mono rounded-lg border transition-all focus:outline-none"
+                            style={debtInputStyle}
+                            onFocus={(e) => { e.target.style.borderColor = C.teal; e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`; }}
+                            onBlur={(e) => { e.target.style.borderColor = C.border; e.target.style.boxShadow = isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"; }}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input
+                            value={row.outstanding}
+                            onChange={(e) => updateDebtRow(row.id, "outstanding", e.target.value)}
+                            placeholder="—"
+                            className="w-28 px-2.5 py-1.5 text-[12px] font-mono rounded-lg border transition-all focus:outline-none"
+                            style={debtInputStyle}
+                            onFocus={(e) => { e.target.style.borderColor = C.teal; e.target.style.boxShadow = `0 0 0 3px ${C.tealDim}`; }}
+                            onBlur={(e) => { e.target.style.borderColor = C.border; e.target.style.boxShadow = isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"; }}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <button
+                            onClick={() => removeDebtRow(row.id)}
+                            className="p-1.5 rounded-lg transition-all hover:opacity-60 hover:rotate-90"
+                            style={{ color: C.textMuted }}
+                            title="Remove lender"
+                          >
+                            <X size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {memo.debtFunding.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-[11px]" style={{ color: C.textMuted }}>
+                          No lenders added yet. Click "Add Lender" below to record a debt facility.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                onClick={addDebtRow}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold border transition-all hover:opacity-80 hover:scale-[1.02] active:scale-95"
+                style={{ borderColor: C.tealBorder, color: C.teal, background: C.tealDim }}
+              >
+                <Plus size={12} /> Add Lender
+              </button>
+            </div>
           ) : (
             <div className="grid gap-5">
               {section.fields.map((f) => (
                 <div key={f.key}>
                   <FieldLabel required={f.required}>{f.label}</FieldLabel>
-                  {f.type === "textarea" ? (
-                    <TextArea
-                      value={memo[f.key] as string}
-                      onChange={(v) => update(f.key, v)}
-                      placeholder={f.placeholder}
-                      rows={3}
-                    />
-                  ) : (
+                  {f.key === "top5Clients" ? (
+  <>
+    <div
+      className="overflow-x-auto rounded-xl border"
+      style={{ borderColor: C.border }}
+    >
+      <table className="w-full">
+        <thead>
+          <tr
+            style={{
+              background: isLight ? "#f8fafc" : C.surfaceUp,
+              borderBottom: `1px solid ${C.border}`,
+            }}
+          >
+            <th className="px-3 py-3 text-left text-xs font-semibold">
+              Client Name
+            </th>
+
+            <th className="px-3 py-3 text-left text-xs font-semibold">
+              Revenue (%)
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {clients.map((row, index) => (
+            <tr
+              key={index}
+              style={{
+                borderBottom:
+                  index !== clients.length - 1
+                    ? `1px solid ${C.border}`
+                    : "none",
+              }}
+            >
+              <td className="p-2">
+                <TextInput
+                  value={row.name}
+                  onChange={(v) => {
+                    const copy = [...clients];
+                    copy[index].name = v;
+                    setClients(copy);
+                  }}
+                  placeholder="Client Name"
+                />
+              </td>
+
+              <td className="p-2">
+                <TextInput
+                  value={row.revenue}
+                  onChange={(v) => {
+                    const copy = [...clients];
+                    copy[index].revenue = v;
+                    setClients(copy);
+                  }}
+                  placeholder="% Revenue"
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <button
+      type="button"
+      className="mt-3 px-4 py-2 rounded-lg"
+      style={{
+        background: C.tealDim,
+        color: C.teal,
+        border: `1px solid ${C.tealBorder}`,
+      }}
+      onClick={() =>
+        setClients([
+          ...clients,
+          {
+            name: "",
+            revenue: "",
+          },
+        ])
+      }
+    >
+      + Add Client
+    </button>
+  </>
+                  ) : f.key === "shareholdingPattern" ? (
+
+  <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.border }}>
+    <table className="w-full">
+      <thead>
+        <tr
+          style={{
+            background: isLight ? "#f8fafc" : C.surfaceUp,
+            borderBottom: `1px solid ${C.border}`,
+          }}
+        >
+          <th className="px-3 py-3 text-left text-xs font-semibold">
+            Name
+          </th>
+
+          <th className="px-3 py-3 text-left text-xs font-semibold">
+            % Holding
+          </th>
+
+          <th className="px-3 py-3 text-left text-xs font-semibold">
+            No. of Shares
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <tr
+            key={index}
+            style={{
+              borderBottom:
+                index !== 4 ? `1px solid ${C.border}` : "none",
+            }}
+          >
+            <td className="p-2">
+              <TextInput
+                value=""
+                onChange={() => {}}
+                placeholder="Shareholder Name"
+              />
+            </td>
+
+            <td className="p-2">
+              <TextInput
+                value=""
+                onChange={() => {}}
+                placeholder="%"
+              />
+            </td>
+
+            <td className="p-2">
+              <TextInput
+                value=""
+                onChange={() => {}}
+                placeholder="No. of Shares"
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+) : f.key === "collateralSecurity" ? (
+              
+
+  <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.border }}>
+    <table className="w-full">
+      <thead>
+        <tr
+          style={{
+            background: isLight ? "#f8fafc" : C.surfaceUp,
+            borderBottom: `1px solid ${C.border}`,
+          }}
+        >
+          <th className="px-3 py-3 text-left text-xs">Description</th>
+          <th className="px-3 py-3 text-left text-xs">Area (Sq. Ft.)</th>
+          <th className="px-3 py-3 text-left text-xs">Govt. Value</th>
+          <th className="px-3 py-3 text-left text-xs">Market Value</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td className="p-2">
+            <TextInput value="" onChange={() => {}} />
+          </td>
+
+          <td className="p-2">
+            <TextInput value="" onChange={() => {}} />
+          </td>
+
+          <td className="p-2">
+            <TextInput value="" onChange={() => {}} />
+          </td>
+
+          <td className="p-2">
+            <TextInput value="" onChange={() => {}} />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+) : f.type === "textarea" ? (
+
+  <TextArea
+    value={memo[f.key] as string}
+    onChange={(v) => update(f.key, v)}
+    placeholder={f.placeholder}
+    rows={3}
+  />
+
+) : (
                     <TextInput
                       value={memo[f.key] as string}
                       onChange={(v) => update(f.key, v)}
@@ -975,7 +1375,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
               className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0"
               style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}` }}
             >
-              <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
             </div>
             <div>
               <span className="text-[13px] font-semibold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</span>
@@ -1015,7 +1415,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
                 className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
                 style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}` }}
               >
-                <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
+                <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
               </div>
               <div>
                 <div className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</div>
@@ -1104,7 +1504,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
         </div>
 
         <div className="px-8 pb-6">
-          <p className="text-[9px] font-mono" style={{ color: C.textDim }}>© 2025 DNH Capital · Strictly Private & Confidential</p>
+          <p className="text-[9px] font-mono" style={{ color: C.textDim }}>© 2025 DnH Fintech · Strictly Private & Confidential</p>
         </div>
       </aside>
 
@@ -1114,7 +1514,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
         <div className="lg:hidden flex items-center justify-between px-6 py-4 border-b sticky top-0 z-10" style={{ background: isLight ? "rgba(255,255,255,0.92)" : C.surface, backdropFilter: "blur(12px)", borderColor: C.border }}>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg overflow-hidden" style={{ background: C.tealDim }}>
-              <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
             </div>
             <span className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</span>
           </div>
@@ -1316,7 +1716,7 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
     >
       <div className="flex items-center gap-3 px-5 py-5">
         <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}` }}>
-          <img src="/logo.png" alt="DNH Capital" className="w-full h-full object-cover" />
+          <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
         </div>
         <div>
           <div className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</div>
@@ -2308,7 +2708,7 @@ function FundingRequestModal({ onClose, onCreated }: { onClose: () => void; onCr
             </button>
           </div>
           <p className="text-[9px] font-mono leading-relaxed" style={{ color: C.textDim }}>
-            Requests go to PENDING_APPROVAL until reviewed by a DNH Capital associate partner. Your company must be verified before this can go live to investors.
+            Requests go to PENDING_APPROVAL until reviewed by a DnH Fintech associate partner. Your company must be verified before this can go live to investors.
           </p>
         </div>
       </div>
@@ -2691,7 +3091,7 @@ function VerificationSection() {
     { label: "Document Review",        status: "under_review", desc: "Compliance team reviewing uploaded documents" },
     { label: "Financial Audit",        status: "pending",      desc: "Audited accounts under review by partner firm" },
     { label: "AML Screening",          status: "pending",      desc: "Anti-money laundering check in progress" },
-    { label: "Platform Approval",      status: "pending",      desc: "Final sign-off by DNH Capital compliance" },
+    { label: "Platform Approval",      status: "pending",      desc: "Final sign-off by DnH Fintech compliance" },
   ];
   return (
     <Panel className="p-5">
@@ -3007,7 +3407,7 @@ function AppInner() {
             className="flex items-center justify-between mt-8 pt-4 border-t text-[9px] font-mono"
             style={{ borderColor: C.border, color: C.textDim }}
           >
-            <span>DNH Capital · Company Dashboard v2.6.0</span>
+            <span>DnH Fintech · Company Dashboard v2.6.0</span>
             <span>Last sync: {new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} UTC</span>
             <span className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: C.teal }} />

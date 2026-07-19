@@ -33,9 +33,9 @@ import {
 // Bounds are defined separately per unit so switching between Cr and Lakh
 // doesn't produce a nonsensical range (previously both units shared the
 // same 0.1–50 bounds, which only made sense for Crore).
-const MIN_LOAN_CR = 0.1; // 10L
-const MAX_LOAN_CR = 50;  // 50Cr
-const LOAN_STEP_CR = 0.1;
+const MIN_LOAN_CR = 25; // 10L
+const MAX_LOAN_CR = 2500;  // 50Cr
+const LOAN_STEP_CR = 1;
 
 const MIN_LOAN_L = MIN_LOAN_CR * 100; // 10L
 const MAX_LOAN_L = MAX_LOAN_CR * 100; // 5000L (=50Cr)
@@ -185,7 +185,7 @@ export default function GetStarted() {
   const [loading, setLoading] = useState(false);
 
   // EMI calculator state
-  const [loanAmountCr, setLoanAmountCr] = useState(1); // value in whatever unit is currently selected
+  const [loanAmountCr, setLoanAmountCr] = useState(MIN_LOAN_CR); // value in whatever unit is currently selected
   const [loanUnit, setLoanUnit] = useState<"cr" | "l">("cr");
   const [interestRate, setInterestRate] = useState(8.5);
   const [loanTenure, setLoanTenure] = useState(20);
