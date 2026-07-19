@@ -621,6 +621,17 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
     revenue: "",
   },
 ]);
+  const [collateral, setCollateral] = useState([
+    {
+      description: "",
+      area: "",
+      govtValue: "",
+      marketValue: "",
+    },
+  ]);
+  const [shareholders, setShareholders] = useState(
+    Array.from({ length: 5 }, () => ({ name: "", holding: "", shares: "" }))
+  );
 
   const section = MEMO_SECTIONS[sectionIdx];
   const isLast  = sectionIdx === MEMO_SECTIONS.length - 1;
@@ -651,8 +662,8 @@ function InformationMemoStep({ onBack, onSubmit }: { onBack: () => void; onSubmi
     };
 
     // Calculate Total Debt
-    const std = parseFloat(financials.std?.[yearKey] || "0");
-    const ltd = parseFloat(financials.ltd?.[yearKey] || "0");
+    const std = parseFloat(financials["std(short term loan)"]?.[yearKey] || "0");
+    const ltd = parseFloat(financials["ltd(long term loan)"]?.[yearKey] || "0");
 
     financials.totalDebt = {
       ...financials.totalDebt,
@@ -1133,34 +1144,46 @@ financials.totalDebtEbitda = {
       </thead>
 
       <tbody>
-        {Array.from({ length: 5 }).map((_, index) => (
+        {shareholders.map((row, index) => (
           <tr
             key={index}
             style={{
               borderBottom:
-                index !== 4 ? `1px solid ${C.border}` : "none",
+                index !== shareholders.length - 1 ? `1px solid ${C.border}` : "none",
             }}
           >
             <td className="p-2">
               <TextInput
-                value=""
-                onChange={() => {}}
+                value={row.name}
+                onChange={(v) => {
+                  const copy = [...shareholders];
+                  copy[index].name = v;
+                  setShareholders(copy);
+                }}
                 placeholder="Shareholder Name"
               />
             </td>
 
             <td className="p-2">
               <TextInput
-                value=""
-                onChange={() => {}}
+                value={row.holding}
+                onChange={(v) => {
+                  const copy = [...shareholders];
+                  copy[index].holding = v;
+                  setShareholders(copy);
+                }}
                 placeholder="%"
               />
             </td>
 
             <td className="p-2">
               <TextInput
-                value=""
-                onChange={() => {}}
+                value={row.shares}
+                onChange={(v) => {
+                  const copy = [...shareholders];
+                  copy[index].shares = v;
+                  setShareholders(copy);
+                }}
                 placeholder="No. of Shares"
               />
             </td>
@@ -1190,23 +1213,59 @@ financials.totalDebtEbitda = {
       </thead>
 
       <tbody>
-        <tr>
-          <td className="p-2">
-            <TextInput value="" onChange={() => {}} />
-          </td>
+        {collateral.map((row, index) => (
+          <tr
+            key={index}
+            style={{
+              borderBottom:
+                index !== collateral.length - 1 ? `1px solid ${C.border}` : "none",
+            }}
+          >
+            <td className="p-2">
+              <TextInput
+                value={row.description}
+                onChange={(v) => {
+                  const copy = [...collateral];
+                  copy[index].description = v;
+                  setCollateral(copy);
+                }}
+              />
+            </td>
 
-          <td className="p-2">
-            <TextInput value="" onChange={() => {}} />
-          </td>
+            <td className="p-2">
+              <TextInput
+                value={row.area}
+                onChange={(v) => {
+                  const copy = [...collateral];
+                  copy[index].area = v;
+                  setCollateral(copy);
+                }}
+              />
+            </td>
 
-          <td className="p-2">
-            <TextInput value="" onChange={() => {}} />
-          </td>
+            <td className="p-2">
+              <TextInput
+                value={row.govtValue}
+                onChange={(v) => {
+                  const copy = [...collateral];
+                  copy[index].govtValue = v;
+                  setCollateral(copy);
+                }}
+              />
+            </td>
 
-          <td className="p-2">
-            <TextInput value="" onChange={() => {}} />
-          </td>
-        </tr>
+            <td className="p-2">
+              <TextInput
+                value={row.marketValue}
+                onChange={(v) => {
+                  const copy = [...collateral];
+                  copy[index].marketValue = v;
+                  setCollateral(copy);
+                }}
+              />
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   </div>
@@ -1270,7 +1329,6 @@ financials.totalDebtEbitda = {
     </div>
   );
 }
-
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComplete: (docs: UploadedDoc[]) => void }) {
   const { colors: C, theme } = useTheme();
