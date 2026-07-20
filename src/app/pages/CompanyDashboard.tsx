@@ -454,7 +454,7 @@ interface DebtFundingRow {
 }
 
 interface InformationMemo {
-  borrower: string;
+  CompanyName: string;
   promoters: string;
   coBorrowerGuarantor: string;
   aboutBorrowingEntity: string;
@@ -506,7 +506,7 @@ const MEMO_SECTIONS: MemoSection[] = [
   {
     id: "entity", title: "Entity Overview", sub: "Borrower and legal identity", icon: Briefcase,
     fields: [
-      { key: "borrower", label: "Borrower", type: "input", required: true, placeholder: "Legal entity name" },
+      { key: "CompanyName", label: "Company Name", type: "input", required: true, placeholder: "Legal entity name" },
       { key: "promoters", label: "Promoters", type: "input", placeholder: "Names of promoters" },
       { key: "coBorrowerGuarantor", label: "Co-borrower / Guarantor", type: "input", placeholder: "Co-borrower or guarantor, if any" },
       { key: "aboutBorrowingEntity", label: "About Borrowing Entity", type: "textarea", placeholder: "Vintage, business model, major competition, debtors and creditors cycle" },
@@ -545,7 +545,7 @@ const MEMO_SECTIONS: MemoSection[] = [
 ];
  
 const EMPTY_MEMO: InformationMemo = {
-  borrower: "", promoters: "", coBorrowerGuarantor: "", aboutBorrowingEntity: "",
+  CompanyName: "", promoters: "", coBorrowerGuarantor: "", aboutBorrowingEntity: "",
   registeredAddress: "", corporateOffice: "", aboutGroup: "", aboutPromoter: "",
   shareholdingPattern: "", directorsProfile: "",
   financials: Object.fromEntries(FINANCIAL_ROWS.map((r) => [r.key, Object.fromEntries(FINANCIAL_YEARS.map((y) => [y.key, ""]))])),
@@ -709,7 +709,7 @@ financials.totalDebtEbitda = {
     setMemo((m) => ({ ...m, debtFunding: m.debtFunding.filter((r) => r.id !== id) }));
   }
 
-  const requiredOk = memo.borrower.trim().length > 0;
+  const requiredOk = memo.CompanyName.trim().length > 0;
 
   async function handleSubmit() {
     if (!requiredOk) { setSectionIdx(0); setError("Borrower is required before you can continue."); return; }
@@ -1397,7 +1397,7 @@ async function handleFile(key: string, file: File) {
 
   async function handleMemoSubmit(memo: InformationMemo) {
   await updateCompanyProfile({
-    companyName: memo.borrower || undefined,
+    companyName: memo.CompanyName || undefined,
     informationMemo: memo,
   }); // no more `as any`
   setStep("upload");

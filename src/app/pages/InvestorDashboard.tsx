@@ -42,6 +42,8 @@ import {
   type NotificationData,
 } from "../../api/notification";
 
+import { browseCompanies, type BrowseCompanyItem } from "../../api/investor";
+
 // ─── UI Types (what the dashboard renders) ────────────────────────────────────
 
 type NavItem = { id: string; label: string; icon: React.ElementType; badge?: number };
@@ -203,6 +205,34 @@ function useFundingOpportunities() {
   return useApiCall<Company[]>(async () => {
     const list = await getActiveFundingOpportunities();
     return (list ?? []).map(mapCompany);
+  }, []);
+}
+
+function mapVerifiedCompany(c: BrowseCompanyItem): Company {
+  const activeRound = c.fundingOpportunities.find(fo => fo.status === "ACTIVE") ?? null;
+  return {
+    id: c.id,
+    fundingOpportunityId: activeRound?.id ?? "",
+    name: c.companyName,
+    sector: c.industry ?? "—",
+    stage: activeRound?.status ?? "No active round",
+    valuation: activeRound?.valuation ? fmtMoney(activeRound.valuation) : "—",
+    raised: activeRound ? fmtMoney(activeRound.fundNeeded) : "—",
+    location: c.address ?? "—",
+    logo: initialsFor(c.companyName),
+    color: colorFor(c.id),
+    description: c.description ?? "No description provided.",
+    founded: c.foundedYear ? String(c.foundedYear) : "—",
+    employees: c.teamSize ? String(c.teamSize) : "—",
+    revenue: "—",
+    website: c.website ?? "—",
+  };
+}
+
+function useVerifiedCompanies() {
+  return useApiCall<Company[]>(async () => {
+    const list = await browseCompanies();
+    return (list ?? []).map(mapVerifiedCompany);
   }, []);
 }
 
@@ -903,7 +933,7 @@ function DashboardView({ dark }: { dark: boolean }) {
 // ─── Explore View ─────────────────────────────────────────────────────────────
 
 function ExploreView({ dark }: { dark: boolean }) {
-  const { data, loading, error, refetch } = useFundingOpportunities();
+  const { data, loading, error, refetch } = useVerifiedCompanies();
   const [selected, setSelected] = useState<Company | null>(null);
   const [search, setSearch] = useState("");
   const [sector, setSector] = useState("All");

@@ -4,8 +4,8 @@ import GetStarted from "./pages/GetStarted";
 import InvestorDashboard from "./pages/InvestorDashboard";
 import CompanyDashboard from "./pages/CompanyDashboard";
 import AssociateDashboard from "./pages/AssociateDashboard";
-import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import ForgotPassword from "./pages/ForgotPassword";
 
 export const router = createBrowserRouter([
   {
@@ -15,7 +15,7 @@ export const router = createBrowserRouter([
 
    {
     path: "/forgot-password",
-    element: <ForgotPassword />,
+    element: <ForgotPassword/>,
   },
   {
     path: "/reset-password",

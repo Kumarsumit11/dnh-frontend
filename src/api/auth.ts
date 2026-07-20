@@ -57,4 +57,30 @@ export const logout = async () => {
 };
 
 
+export interface ForgotPasswordData {
+  email: string;
+}
 
+export interface ResetPasswordData {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+export const forgotPassword = async (email: string) => {
+  const response = await api.post("/auth/forgot-password", { email });
+  return response.data.data;
+};
+
+export const resetPassword = async (
+  email: string,
+  otp: string,
+  newPassword: string
+) => {
+  const response = await api.post("/auth/reset-password", {
+    email,
+    otp,
+    newPassword,
+  });
+  return response.data.data;
+};
