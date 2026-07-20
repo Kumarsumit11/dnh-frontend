@@ -6,12 +6,13 @@ import {
 import * as XLSX from "xlsx";
 import { uploadDocument, getMyDocuments } from "../../api/document";
 import { getCompanyDashboard } from "../../api/dashboard";
-import { getCompanyProfile, updateCompanyProfile } from "../../api/profile";
+import { getCompanyProfile, updateCompanyProfile, submitCompanyForVerification  } from "../../api/profile";
 import { createFundingOpportunity } from "../../api/funding";
 import {
   getCompanyUpdates, createCompanyUpdate, editCompanyUpdate, deleteCompanyUpdate,
   type CompanyUpdate, type UpdateAuthorRole, type UpdateCategory,
 } from "../../api/company-update";
+
 import {
   LayoutDashboard, TrendingUp, Users, FileText, ShieldCheck,
   Bell, User, Settings, ChevronRight, ArrowUpRight,
@@ -1343,29 +1344,56 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
   const allDone  = done === total;
   const pct      = Math.round((done / total) * 100);
 
-  async function handleFile(key: string, file: File) {
-    try {
-      await uploadDocument(file, "OTHER");
-      setUploadedDocs((prev) => ({
-        ...prev,
-        [key]: {
-          name: file.name,
-          size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-          type: file.name.split(".").pop()?.toUpperCase() || "FILE",
-          status: "uploaded",
-          uploadedAt: new Date().toISOString(),
-        },
-      }));
-    } catch (err) {
-      console.error(err);
-      alert("Upload failed");
-    }
-  }
+const DOC_TYPE_MAP: Record<string, string> = {
+  pitch_deck: "PITCH_DECK",
+  incorporation: "COMPANY_REGISTRATION",
+  financial_model: "FINANCIAL_STATEMENT",
+  audited_financials: "FINANCIAL_STATEMENT", // same enum value as financial_model — see note below
+  cap_table: "OTHER",
+};
 
-  function finishOnboarding() {
-    setStep("processing");
-    setTimeout(() => { onComplete(Object.values(uploadedDocs).filter(Boolean) as UploadedDoc[]); }, 2200);
+// Prefix so financial_model / audited_financials / cap_table stay distinguishable
+// in the admin document list even though they share a backend DocumentType.
+const DOC_LABEL_PREFIX: Record<string, string> = {
+  audited_financials: "[Audited Financials] ",
+  cap_table: "[Cap Table] ",
+};
+
+async function handleFile(key: string, file: File) {
+  try {
+    const docType = DOC_TYPE_MAP[key] || "OTHER";
+    const prefix = DOC_LABEL_PREFIX[key] || "";
+    const uploadFile =
+      prefix && file.name.indexOf(prefix) !== 0
+        ? new File([file], `${prefix}${file.name}`, { type: file.type })
+        : file;
+
+    await uploadDocument(uploadFile, docType);
+    setUploadedDocs((prev) => ({
+      ...prev,
+      [key]: {
+        name: file.name,
+        size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+        type: file.name.split(".").pop()?.toUpperCase() || "FILE",
+        status: "uploaded",
+        uploadedAt: new Date().toISOString(),
+      },
+    }));
+  } catch (err) {
+    console.error(err);
+    alert("Upload failed");
   }
+}
+
+  async function finishOnboarding() {
+  setStep("processing");
+  try {
+    await submitCompanyForVerification();
+  } catch (err) {
+    console.error("submit-verification failed:", err);
+  }
+  setTimeout(() => { onComplete(Object.values(uploadedDocs).filter(Boolean) as UploadedDoc[]); }, 2200);
+}
 
   async function handleMemoSubmit(memo: InformationMemo) {
   await updateCompanyProfile({
@@ -1436,7 +1464,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
               <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
             </div>
             <div>
-              <span className="text-[13px] font-semibold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</span>
+              <span className="text-[13px] font-semibold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DnH FINTECH</span>
               <span className="text-[10px] font-mono ml-2" style={{ color: C.textMuted }}>· Onboarding</span>
             </div>
           </div>
@@ -1476,7 +1504,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
                 <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
               </div>
               <div>
-                <div className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</div>
+                <div className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DnH FINTECH</div>
                 <div className="text-[9px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>Investment Platform</div>
               </div>
             </div>
@@ -1574,7 +1602,7 @@ function DocumentOnboarding({ user, onComplete }: { user: AppUser | null; onComp
             <div className="w-7 h-7 rounded-lg overflow-hidden" style={{ background: C.tealDim }}>
               <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
             </div>
-            <span className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</span>
+            <span className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DnH Fintech</span>
           </div>
           <ThemeToggle compact />
         </div>
@@ -1777,7 +1805,7 @@ function Sidebar({ active, setActive, user, kpi }: { active: string; setActive: 
           <img src="/logo.png" alt="DnH Fintech" className="w-full h-full object-cover" />
         </div>
         <div>
-          <div className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DNH Capital</div>
+          <div className="text-[13px] font-bold" style={{ color: C.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>DnH FINTECH</div>
           <div className="text-[9px] font-mono uppercase tracking-widest" style={{ color: C.textMuted }}>Company Portal</div>
         </div>
       </div>
@@ -3141,40 +3169,63 @@ function DocumentsSection({ documents }: { documents: DocumentRow[] }) {
 }
 
 // ─── Verification section ─────────────────────────────────────────────────────
-function VerificationSection() {
+function VerificationSection({ kpi, documents }: { kpi: KpiData; documents: DocumentRow[] }) {
   const { colors: C } = useTheme();
-  const steps = [
-    { label: "Identity Verification",  status: "verified",     desc: "Director and beneficial owner KYC complete" },
-    { label: "Company Registration",   status: "verified",     desc: "Companies House registry confirmation received" },
-    { label: "Document Review",        status: "under_review", desc: "Compliance team reviewing uploaded documents" },
-    { label: "Financial Audit",        status: "pending",      desc: "Audited accounts under review by partner firm" },
-    { label: "AML Screening",          status: "pending",      desc: "Anti-money laundering check in progress" },
-    { label: "Platform Approval",      status: "pending",      desc: "Final sign-off by DnH Fintech compliance" },
-  ];
+  const status = (kpi.verificationStatus || "UNVERIFIED").toUpperCase();
+
+  const overallLabel =
+    status === "VERIFIED" ? "Verified" :
+    status === "REJECTED" ? "Rejected" :
+    status === "PENDING"  ? "Under review" : "Not submitted";
+
   return (
-    <Panel className="p-5">
-      <SectionHeader title="Verification Status" sub="KYC / KYB compliance progress" />
-      <div className="space-y-2">
-        {steps.map((step, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-4 p-4 rounded-xl border transition-all hover:translate-x-0.5"
-            style={{ borderColor: step.status === "verified" ? C.tealBorder : C.border, background: step.status === "verified" ? C.tealGlow : "transparent" }}
-          >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: step.status === "verified" ? C.tealDim : C.surfaceUp, border: `1px solid ${step.status === "verified" ? C.tealBorder : C.border}` }}>
-              {step.status === "verified"     && <CheckCircle size={15} style={{ color: C.teal }} />}
-              {step.status === "under_review" && <Clock       size={15} style={{ color: C.blue }} />}
-              {step.status === "pending"      && <AlertCircle size={15} style={{ color: C.textMuted }} />}
-            </div>
-            <div className="flex-1">
-              <p className="text-[11px] font-semibold" style={{ color: C.textPrimary }}>{step.label}</p>
-              <p className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>{step.desc}</p>
-            </div>
-            <StatusBadge status={step.status} />
+    <div className="space-y-4">
+      <Panel className="p-5">
+        <SectionHeader title="Verification Status" sub={`Current status: ${overallLabel}`} />
+        <div
+          className="flex items-center gap-4 p-4 rounded-xl border"
+          style={{
+            borderColor: status === "VERIFIED" ? C.tealBorder : C.border,
+            background: status === "VERIFIED" ? C.tealGlow : "transparent",
+          }}
+        >
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}` }}>
+            {status === "VERIFIED" && <CheckCircle size={15} style={{ color: C.teal }} />}
+            {status === "PENDING"  && <Clock size={15} style={{ color: C.blue }} />}
+            {(status === "UNVERIFIED" || status === "REJECTED") && <AlertCircle size={15} style={{ color: C.textMuted }} />}
           </div>
-        ))}
-      </div>
-    </Panel>
+          <div className="flex-1">
+            <p className="text-[11px] font-semibold" style={{ color: C.textPrimary }}>Company Verification</p>
+            <p className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>
+              Information Memorandum and required documents reviewed by DnH compliance
+            </p>
+          </div>
+          <StatusBadge status={status.toLowerCase()} />
+        </div>
+      </Panel>
+
+      <Panel className="p-5">
+        <SectionHeader title="Document Review" sub="Status of each uploaded document" />
+        {documents.length > 0 ? (
+          <div className="space-y-2">
+            {documents.map((d, i) => (
+              <div key={i} className="flex items-center gap-4 p-4 rounded-xl border" style={{ borderColor: C.border }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: C.surfaceUp }}>
+                  <FileText size={13} style={{ color: C.teal }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold truncate" style={{ color: C.textPrimary }}>{d.name}</p>
+                  <p className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>{d.type} · {d.uploaded}</p>
+                </div>
+                <StatusBadge status={d.status} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState message="No documents yet" sub="Upload required documents to begin review" icon={FileText} />
+        )}
+      </Panel>
+    </div>
   );
 }
 
@@ -3429,7 +3480,7 @@ function AppInner() {
       case "ceo-dashboard":return <CeoDashboard data={ceoData} onParsed={setCeoData} />;
       case "cfo-dashboard":return <CfoDashboard data={cfoData} onParsed={setCfoData} />;
       case "documents":    return <DocumentsSection documents={documents} />;
-      case "verification": return <VerificationSection />;
+      case "verification": return <VerificationSection kpi={kpi} documents={documents} />;
       case "notifications":return <NotificationsSection notifications={notifications} />;
       case "profile":
         return (

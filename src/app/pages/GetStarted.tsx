@@ -403,7 +403,7 @@ export default function GetStarted() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-white/40 mb-1 uppercase tracking-wider">Interest Rate</label>
+                <label className="block text-xs font-semib�old text-white/40 mb-1 uppercase tracking-wider">Interest Rate</label>
                 <input
                   type="number"
                   min={5}
@@ -453,7 +453,7 @@ export default function GetStarted() {
       {/* Bottom globe decoration */}
       <div className="mt-auto px-10 pb-8 flex items-center gap-2 opacity-30">
         <Globe size={13} className="text-white" />
-        <span className="text-white text-[11px]">Operating across India</span>
+        <span className="text-white text-[11px]">Operating World Wide</span>
       </div>
     </div>
   );
@@ -653,47 +653,47 @@ export default function GetStarted() {
     </div>
   );
 
-  const signupStep3 = (
-    <div className="space-y-5">
-      <button onClick={() => setSignupStep(2)} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors mb-1">
-        <ArrowLeft size={13} /> Back
-      </button>
-      <div className="mb-2">
-        <h2 className="text-2xl font-bold text-slate-900 leading-tight" style={{ letterSpacing: "-0.02em" }}>Check your inbox</h2>
-        <p className="text-slate-400 text-sm mt-1">
-          We sent a 6-digit code to <span className="text-slate-700 font-medium">{email || "your email"}</span>.
-        </p>
-      </div>
-      <StepDots current={signupStep} />
+const signupStep3 = (
+  <div className="space-y-5">
+    <button onClick={() => setSignupStep(2)} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors mb-1">
+      <ArrowLeft size={13} /> Back
+    </button>
+    <div className="mb-2">
+      <h2 className="text-2xl font-bold text-slate-900 leading-tight" style={{ letterSpacing: "-0.02em" }}>Check your inbox</h2>
+      <p className="text-slate-400 text-sm mt-1">
+        We sent a 6-digit code to <span className="text-slate-700 font-medium">{email || "your email"}</span>.
+      </p>
+    </div>
+    <StepDots current={signupStep} />
 
-      <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Verification Code</label>
-        <div className="flex gap-1.5">
-          {otp.map((digit, i) => (
-            <input key={i} id={`otp-${i}`} type="text" inputMode="numeric" maxLength={1} value={digit}
-              onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => handleOtpKey(i, e)}
-              className="flex-1 h-10 text-center text-base font-bold rounded-lg border-2 transition-all duration-150 focus:outline-none bg-slate-50 focus:bg-white"
-              style={{
-                borderColor: digit ? "#1d4ed8" : "#e2e8f0",
-                color: "#0f172a",
-                transform: digit ? "scale(1.04)" : "scale(1)",
-                boxShadow: digit ? "0 0 0 3px rgba(29,78,216,0.12)" : "none",
-              }}
-            />
-          ))}
-        </div>
-        <button className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 mt-3 font-medium transition-colors">
-          <RefreshCw size={11} /> Resend code
-        </button>
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Verification Code</label>
+      <div className="flex gap-1">
+        {otp.map((digit, i) => (
+          <input key={i} id={`otp-${i}`} type="text" inputMode="numeric" maxLength={1} value={digit}
+            onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => handleOtpKey(i, e)}
+            className="flex-1 h-7 text-center text-sm font-semibold rounded-lg border-2 transition-all duration-150 focus:outline-none bg-slate-50 focus:bg-white"
+            style={{
+              borderColor: digit ? "#1d4ed8" : "#e2e8f0",
+              color: "#0f172a",
+              transform: digit ? "scale(1.01)" : "scale(1)",
+              boxShadow: digit ? "0 0 0 1px rgba(29,78,216,0.12)" : "none",
+            }}
+          />
+        ))}
       </div>
-
-      <button onClick={handleVerifyOtp} disabled={loading}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 disabled:opacity-60"
-        style={{ background: "linear-gradient(135deg, #1d4ed8, #4f46e5)", boxShadow: "0 4px 20px rgba(29,78,216,0.3)" }}>
-        {loading ? "Verifying…" : (<>Verify & Continue <ArrowRight size={15} /></>)}
+      <button className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 mt-3 font-medium transition-colors">
+        <RefreshCw size={11} /> Resend code
       </button>
     </div>
-  );
+
+    <button onClick={handleVerifyOtp} disabled={loading}
+      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 disabled:opacity-60"
+      style={{ background: "linear-gradient(135deg, #1d4ed8, #4f46e5)", boxShadow: "0 4px 20px rgba(29,78,216,0.3)" }}>
+      {loading ? "Verifying…" : (<>Verify & Continue <ArrowRight size={15} /></>)}
+    </button>
+  </div>
+);
 
   // ── RIGHT AUTH PANEL ──────────────────────────────────────────────────────
   const authPanel = (
@@ -745,7 +745,7 @@ export default function GetStarted() {
         </button>
         <div className="flex items-center gap-2">
           <Shield size={11} className="text-slate-300" />
-          <span className="text-[11px] text-slate-300">256-bit SSL · RBI compliant · ISO 27001</span>
+          <span className="text-[11px] text-slate-300">256-bit SSL ·</span>
         </div>
       </div>
     </div>

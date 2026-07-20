@@ -59,6 +59,10 @@ export const uploadInvestorAvatar = async (file: File) => {
   return response.data.data;
 };
 
+export const submitCompanyForVerification = async () => {
+  const response = await api.post("/company/submit-verification");
+  return response.data.data;
+};
 
 
 // api/profile.ts
